@@ -1,0 +1,5 @@
+# Cargo build output when working from src-tauri/
+/target/
+
+# Tauri permission/codegen (also listed in repo root .gitignore)
+/gen/schemas

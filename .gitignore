@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust / Cargo (Tauri backend)
+src-tauri/target/
+**/*.rs.bk
+
+# Tauri codegen & tooling
+src-tauri/gen/
+
+# Bundler output (if you add Vite/webpack later)
+dist/
+dist-ssr/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE & local agent settings
+.idea/
+*.swp
+*.swo
+.claude/
+
+# Optional: local VS Code/Cursor workspace settings
+# .vscode/
+# .cursor/

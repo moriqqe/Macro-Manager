@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MacrosManager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #08090b;
+  --bg-1: #0c0d10;
+  --bg-2: #111317;
+  --bg-3: #16191e;
+  --bg-4: #1c2026;
+  --bg-titlebar: #0a0b0d;
+  --line-1: #1d2026;
+  --line-2: #262a31;
+  --line-3: #34394257;
+  --fg-0: #e6e8eb;
+  --fg-1: #a4abb4;
+  --fg-2: #6b7380;
+  --fg-3: #4a5260;
+  --accent: #E5484D;
+  --accent-hi: #FF5C61;
+  --accent-lo: #B5363A;
+  --accent-glow: rgba(229,72,77,0.22);
+  --accent-soft: rgba(229,72,77,0.10);
+  --ok: #46c97c;
+  --warn: #f0b72f;
+  --pad-row-y: 12px;
+  --pad-card: 14px;
+  --gap-card: 10px;
+  --grid-cell: 88px;
+  --titlebar-h: 40px;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+}
+[data-density="compact"] {
+  --pad-row-y: 8px;
+  --pad-card: 10px;
+  --gap-card: 8px;
+  --grid-cell: 78px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+body {
+  font-family: var(--sans);
+  background:
+    radial-gradient(1200px 600px at 20% 0%, #16181c 0%, transparent 60%),
+    radial-gradient(900px 500px at 90% 100%, #15171a 0%, transparent 55%),
+    #050608;
+  color: var(--fg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.app-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg-1);
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: none;
+}
+.titlebar {
+  height: var(--titlebar-h);
+  min-height: var(--titlebar-h);
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--line-1);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  user-select: none;
+}
+/* macOS Overlay: leave space for traffic lights (handled in window chrome) */
+html.tauri-macos .titlebar {
+  padding-left: 78px;
+}
+.titlebar[data-tauri-drag-region] {
+  cursor: default;
+}
+.titlebar .tb-left { display: flex; align-items: center; gap: 8px; }
+.titlebar .tb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); flex-shrink: 0; }
+.titlebar .tb-title { color: var(--fg-1); }
+.titlebar .tb-title strong { color: var(--fg-0); font-weight: 600; }
+.titlebar .tb-spacer { flex: 1; }
+.titlebar .tb-status { display: flex; align-items: center; gap: 6px; font-size: 10px; }
+.titlebar .tb-status .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); animation: pulse 2s infinite; flex-shrink: 0; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.titlebar .tb-btns { display: flex; gap: 6px; margin-left: 12px; }
+.titlebar .tb-btn { width: 14px; height: 14px; display: grid; place-items: center; color: var(--fg-2); cursor: pointer; background: transparent; border: none; padding: 0; }
+.titlebar .tb-btn:hover { color: var(--fg-0); }
+.game-rail {
+  display: flex;
+  border-bottom: 1px solid var(--line-1);
+  background: linear-gradient(180deg, #0a0b0e 0%, #0c0d10 100%);
+  flex-shrink: 0;
+}
+.game-tab {
+  flex: 1;
+  padding: 16px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  border-right: 1px solid var(--line-1);
+  position: relative;
+  transition: background 0.15s ease;
+  background: transparent;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  color: var(--fg-2);
+  text-align: left;
+  font-family: inherit;
+}
+.game-tab:last-child { border-right: none; }
+.game-tab:hover { background: var(--bg-2); color: var(--fg-1); }
+.game-tab.active { background: var(--bg-2); color: var(--fg-0); }
+.game-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.gt-logo-row {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.game-tab .gt-profile {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--fg-3);
+  letter-spacing: 0.08em;
+}
+.game-logo {
+  filter: brightness(0) invert(1) opacity(0.45);
+  transition: filter 0.16s ease;
+  flex-shrink: 0;
+}
+.game-tab.active .game-logo { filter: brightness(0) invert(1) opacity(1); }
+.workspace {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.workspace::-webkit-scrollbar { width: 6px; }
+.workspace::-webkit-scrollbar-track { background: transparent; }
+.workspace::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+.workspace::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--fg-2);
+  text-transform: uppercase;
+}
+.section-head .sh-actions { display: flex; gap: 6px; align-items: center; }
+.section-head .sh-count { color: var(--fg-3); font-weight: 400; }
+.master-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line-1);
+}
+.master-row .mr-info { flex: 1; min-width: 0; }
+.master-row .mr-label { font-size: 12px; color: var(--fg-1); font-family: var(--mono); letter-spacing: 0.04em; }
+.master-row .mr-value { font-size: 14px; color: var(--fg-0); font-weight: 600; margin-top: 2px; letter-spacing: -0.01em; }
+.master-row .mr-meta { font-size: 11px; color: var(--fg-2); margin-top: 2px; font-family: var(--mono); }
+.toggle {
+  width: 36px;
+  height: 20px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 1px; left: 1px;
+  width: 16px; height: 16px;
+  background: var(--fg-2);
+  border-radius: 50%;
+  transition: all 0.18s cubic-bezier(.4,0,.2,1);
+}
+.toggle.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow), 0 0 12px var(--accent-glow); }
+.toggle.on::after { left: 17px; background: #fff; }
+.weapon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-card);
+  padding: 4px 16px 16px;
+}
+.weapon-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  border-radius: 8px;
+  padding: var(--pad-card);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  transition: all 0.16s ease;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+.weapon-card:hover { background: var(--bg-3); border-color: var(--line-2); transform: translateY(-1px); }
+.weapon-card.selected {
+  background: var(--bg-3);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 1px var(--accent-soft), 0 4px 16px -4px var(--accent-glow);
+}
+.weapon-card.selected::before {
+  content: "";
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.weapon-card .wc-img { height: 36px; display: grid; place-items: center; color: var(--fg-1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)); }
+.weapon-card .wc-img .wc-icon { width: auto; height: 30px; max-width: 56px; object-fit: contain; }
+.weapon-card.selected .wc-img { color: var(--fg-0); }
+.weapon-card .wc-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.weapon-card .wc-meta {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--fg-2);
+  letter-spacing: 0.06em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.weapon-card .wc-meta .wc-class { background: var(--bg-1); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line-1); }
+.weapon-card .wc-bound { font-family: var(--mono); font-size: 9px; color: var(--fg-3); letter-spacing: 0.08em; }
+.weapon-card.bound .wc-bound { color: var(--accent); }
+.detail {
+  border-top: 1px solid var(--line-1);
+  background: var(--bg-2);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.detail-head { display: flex; align-items: center; gap: 12px; }
+.detail-head .dh-icon {
+  width: 44px; height: 44px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-0);
+  flex-shrink: 0;
+}
+.detail-head .dh-icon .wc-icon--detail { width: 32px; height: 32px; object-fit: contain; }
+.detail-head .dh-info { flex: 1; min-width: 0; }
+.detail-head .dh-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.1; }
+.detail-head .dh-meta { font-family: var(--mono); font-size: 10px; color: var(--fg-2); letter-spacing: 0.08em; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+.detail-head .dh-meta .dot { width: 2px; height: 2px; border-radius: 50%; background: var(--fg-3); }
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.config-cell {
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.config-cell .cc-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--fg-2); text-transform: uppercase; }
+.config-cell .cc-value { font-size: 13px; font-weight: 600; color: var(--fg-0); font-family: var(--mono); letter-spacing: 0.02em; }
+.hotkey-btn {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  color: inherit;
+}
+.hotkey-btn:hover { background: var(--bg-3); border-color: var(--accent); }
+.hotkey-btn .hb-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--fg-2); text-transform: uppercase; flex-shrink: 0; }
+.hotkey-btn .hb-key {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-0);
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  margin-left: auto;
+}
+.mode-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 6px;
+  padding: 3px;
+  gap: 2px;
+}
+.mode-seg button {
+  background: transparent;
+  border: none;
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 7px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  font-weight: 500;
+}
+.mode-seg button:hover { color: var(--fg-1); }
+.mode-seg button.active { background: var(--bg-3); color: var(--fg-0); box-shadow: inset 0 0 0 1px var(--line-2); }
+.mode-seg button.active::before { content: "● "; color: var(--accent); }
+.macro-block {
+  border: 1px solid var(--line-1);
+  border-radius: 8px;
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.macro-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line-1);
+  background: var(--bg-titlebar);
+}
+.macro-tab {
+  flex: 1;
+  padding: 9px 8px;
+  background: transparent;
+  border: none;
+  color: var(--fg-2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.14s ease;
+  border-bottom: 2px solid transparent;
+}
+.macro-tab:hover { color: var(--fg-1); }
+.macro-tab.active { color: var(--fg-0); border-bottom-color: var(--accent); }
+.macro-body { padding: 12px; min-height: 180px; }
+.steps-list { display: flex; flex-direction: column; font-family: var(--mono); font-size: 11px; }
+.step-row {
+  display: grid;
+  grid-template-columns: 36px 56px 1fr 70px;
+  gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px dashed var(--line-1);
+  align-items: center;
+}
+.step-row:last-child { border-bottom: none; }
+.step-row .sr-idx { color: var(--fg-3); }
+.step-row .sr-time { color: var(--accent); }
+.step-row .sr-action { color: var(--fg-1); }
+.step-row .sr-value { color: var(--fg-0); text-align: right; }
+.timeline { position: relative; height: 140px; background: var(--bg-1); }
+.timeline-track {
+  position: absolute;
+  left: 0; right: 0; top: 30px;
+  height: 80px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.timeline-axis {
+  position: absolute;
+  left: 0; right: 0; top: 12px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--fg-3);
+  letter-spacing: 0.08em;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.timeline-event {
+  position: absolute;
+  top: 8px; bottom: 8px;
+  background: var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--accent-glow);
+  opacity: 0.85;
+}
+.timeline-event.is-mouse { background: var(--accent-hi); }
+.timeline-event.is-move { background: var(--fg-2); opacity: 0.6; box-shadow: none; }
+.timeline-foot {
+  position: absolute;
+  left: 0; right: 0; bottom: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--fg-3);
+  letter-spacing: 0.08em;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.recoil-wrap {
+  position: relative;
+  height: 200px;
+  background:
+    linear-gradient(var(--line-1) 1px, transparent 1px) 0 0 / 100% 20px,
+    linear-gradient(90deg, var(--line-1) 1px, transparent 1px) 0 0 / 20px 100%,
+    var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.recoil-wrap .crosshair-h, .recoil-wrap .crosshair-v { position: absolute; background: var(--line-2); }
+.recoil-wrap .crosshair-h { left: 0; right: 0; top: 50%; height: 1px; }
+.recoil-wrap .crosshair-v { top: 0; bottom: 0; left: 50%; width: 1px; }
+.recoil-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.recoil-foot {
+  position: absolute;
+  bottom: 6px; left: 8px; right: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--fg-3);
+  letter-spacing: 0.08em;
+}
+.btn {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--fg-1);
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.btn:hover { background: var(--bg-3); border-color: var(--fg-3); color: var(--fg-0); }
+.btn.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.btn-primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); box-shadow: 0 0 16px var(--accent-glow); }
+.btn.btn-ghost { background: transparent; border-color: var(--line-1); }
+.btn.btn-ghost:hover { background: var(--bg-2); }
+.btn-icon {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  color: var(--fg-1);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  padding: 0;
+}
+.btn-icon:hover { background: var(--bg-3); color: var(--fg-0); border-color: var(--line-2); }
+.overlay-bg {
+  position: absolute;
+  inset: var(--titlebar-h) 0 0 0;
+  background: rgba(5,6,8,0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  animation: fadeIn 0.16s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: 86%;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.6), 0 0 0 1px var(--accent-soft);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: modalIn 0.2s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; }
+.modal-close { background: transparent; border: none; color: var(--fg-2); cursor: pointer; padding: 4px; }
+.modal-close:hover { color: var(--fg-0); }
+.kc-face {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 28px 16px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.kc-face::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, var(--accent-soft) 0%, transparent 60%);
+  animation: kcPulse 1.6s ease-in-out infinite;
+}
+@keyframes kcPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+.kc-face .kc-prompt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin-bottom: 14px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.kc-face .kc-rec-dot {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: kcPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--accent);
+}
+.kc-face .kc-key { font-family: var(--mono); font-size: 32px; font-weight: 600; color: var(--fg-0); letter-spacing: 0.06em; position: relative; text-shadow: 0 0 24px var(--accent-glow); }
+.kc-face .kc-hint { font-size: 11px; color: var(--fg-2); margin-top: 14px; position: relative; }
+.kc-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dropzone {
+  background: var(--bg-1);
+  border: 1.5px dashed var(--line-2);
+  border-radius: 8px;
+  padding: 36px 16px;
+  text-align: center;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+.dropzone.over { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone .dz-icon { color: var(--fg-2); margin-bottom: 12px; }
+.dropzone.over .dz-icon { color: var(--accent); }
+.dropzone .dz-title { font-size: 14px; font-weight: 600; color: var(--fg-0); }
+.dropzone .dz-sub { font-size: 11px; color: var(--fg-2); margin-top: 4px; font-family: var(--mono); letter-spacing: 0.06em; }
+.dropzone .dz-formats { margin-top: 12px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--fg-3); }
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.import-row .ir-icon { width: 32px; height: 32px; background: var(--bg-3); border-radius: 4px; display: grid; place-items: center; color: var(--accent); border: 1px solid var(--line-2); }
+.import-row .ir-info { flex: 1; min-width: 0; }
+.import-row .ir-name { font-size: 12px; color: var(--fg-0); font-weight: 500; }
+.import-row .ir-meta { font-family: var(--mono); font-size: 10px; color: var(--fg-2); margin-top: 2px; letter-spacing: 0.04em; }
+.import-row .ir-progress { font-family: var(--mono); font-size: 10px; color: var(--ok); letter-spacing: 0.06em; }
+.assign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.assign-cell {
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.assign-cell:hover { border-color: var(--line-2); background: var(--bg-3); }
+.assign-cell .ac-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--fg-2); text-transform: uppercase; }
+.assign-cell .ac-value { font-size: 12px; color: var(--fg-0); font-weight: 500; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background: var(--bg-titlebar);
+  border-top: 1px solid var(--line-1);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-2);
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.statusbar .sb-pill { background: var(--bg-2); border: 1px solid var(--line-1); padding: 2px 6px; border-radius: 3px; color: var(--fg-1); }
+.statusbar .sb-spacer { flex: 1; }
+.statusbar .sb-ok { color: var(--ok); }
+[data-layout="list"] .weapon-grid { grid-template-columns: 1fr; }
+[data-layout="list"] .weapon-card { flex-direction: row; align-items: center; gap: 12px; padding: 10px 12px; }
+[data-layout="list"] .weapon-card .wc-img { width: 48px; height: 28px; }
+[data-layout="list"] .weapon-card .wc-name { flex: 1; }
+[data-layout="list"] .weapon-card .wc-meta { flex-direction: row; gap: 8px; }
+[data-layout="list"] .weapon-card.selected::before { top: 50%; transform: translateY(-50%); }
+[data-layout="dense"] .weapon-grid { grid-template-columns: repeat(2, 1fr); }
+</style>
+</head>
+<body>
+<input type="file" id="macro-file-json" accept=".json,application/json" style="display:none" />
+<div id="root"></div>
+<script>
+/* ============================================================
+   TAURI
+   ============================================================ */
+
+function tauriInvoke(cmd, args) {
+  const c = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+  if (!c) return Promise.reject(new Error('Tauri API not available (open via tauri dev)'));
+  return c(cmd, args || {});
+}
+
+(function initMacWindowChrome() {
+  try {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const plat = typeof navigator !== 'undefined' ? navigator.platform || '' : '';
+    if (/Mac/i.test(plat) || /Mac OS X|Macintosh/i.test(ua)) {
+      document.documentElement.classList.add('tauri-macos');
+    }
+  } catch (_) {}
+})();
+
+/* ============================================================
+   DEMO DATA (fallback preview)
+   ============================================================ */
+
+const RECOIL_PATH = [
+  [0,0],[0,4],[-1,10],[-3,17],[-6,25],[-8,34],
+  [-7,44],[-3,54],[3,62],[9,68],[12,74],[10,80],
+  [4,84],[-3,86],[-9,84],[-13,80],[-12,74],[-7,68],[-1,64],[4,60],
+];
+
+function demoMacroSteps() {
+  return [
+    { t: 0,   type: 'mouse', action: 'DOWN',  value: 'LMB' },
+    { t: 32,  type: 'mouse', action: 'UP',    value: 'LMB' },
+  ];
+}
+
+function stepsForWeapon(w) {
+  if (w && w.macroPreview && w.macroPreview.length) {
+    return w.macroPreview.map(s => ({
+      t: s.t,
+      type: s.kind || s.type,
+      action: s.action,
+      value: s.value,
+    }));
+  }
+  return demoMacroSteps();
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+
+const state = {
+  gamesList: [],
+  rawConfig: null,
+  gameId: 'pubg',
+  weaponState: {},
+  selected: {},
+  masterOn: true,
+  overlay: null,
+  density: 'comfortable',
+  layout: 'grid',
+  showRecoil: true,
+  macroTab: 'steps',
+  capturedKey: null,
+  importFile: null,
+  importProgress: 0,
+  importGame: 'pubg',
+  importWeaponId: 'm416',
+  importPendingJson: null,
+  toast: null,
+  tweaksOpen: false,
+};
+
+function applyLoadResponse(res) {
+  state.rawConfig = res.config;
+  state.weaponState = {};
+  state.gamesList = (res.ui.games || []).map(g => ({
+    id: g.id,
+    code: g.code,
+    name: g.name,
+    sub: g.sub,
+    profile: g.profile,
+  }));
+  state.selected = Object.assign({}, state.selected || {});
+  for (const g of res.ui.games || []) {
+    state.weaponState[g.id] = (g.weapons || []).map(w => ({
+      id: w.id,
+      name: w.name,
+      class: w.class,
+      caliber: w.caliber,
+      bound: w.bound,
+      hotkey: w.hotkey,
+      mode: w.mode,
+      rpm: w.rpm,
+      recoil: w.recoil,
+      macroId: w.macroId,
+      macroPreview: w.macroPreview,
+      iconUrl: w.iconUrl,
+    }));
+    if (!state.selected[g.id] && g.weapons && g.weapons[0]) {
+      state.selected[g.id] = g.weapons[0].id;
+    }
+  }
+  state.gameId = res.ui.activeGame || 'pubg';
+  state.masterOn = !!res.ui.masterEnabled;
+}
+
+function gamesForRail() {
+  if (state.gamesList && state.gamesList.length) return state.gamesList;
+  return [
+    { id: 'pubg', code: 'PUBG', name: 'PUBG: Battlegrounds', sub: '…', profile: '…' },
+    { id: 'rust', code: 'RUST', name: 'Rust', sub: '…', profile: '…' },
+    { id: 'cs2', code: 'CS2', name: 'Counter-Strike 2', sub: '…', profile: '…' },
+  ];
+}
+
+async function loadConfig() {
+  try {
+    const res = await tauriInvoke('load_config');
+    applyLoadResponse(res);
+    render();
+  } catch (e) {
+    console.error(e);
+    showToast('Load failed — use tauri dev');
+  }
+}
+
+let importProgressTimer = null;
+let toastTimer = null;
+let hotkeyListener = null;
+
+function setState(updates) {
+  Object.assign(state, updates);
+  render();
+}
+
+/* ============================================================
+   ICONS
+   ============================================================ */
+
+const IC = {
+  chevronDown: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  upload:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+  search:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  x:       `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  cog:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  file:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  check:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+};
+
+/* ============================================================
+   WEAPON SILHOUETTES
+   ============================================================ */
+
+function weaponSvg(cls, color) {
+  const k = cls.toLowerCase();
+  if (k.includes('smg'))
+    return `<svg viewBox="0 0 64 24" width="52" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M6 12 L10 12 L10 9 L34 9 L34 12 L48 12 L50 14 L40 14 L40 17 L34 17 L34 14 L18 14 L16 18 L12 18 L12 12 Z"/><rect x="34" y="5" width="5" height="4" stroke="${color}"/></svg>`;
+  if (k.includes('dmr'))
+    return `<svg viewBox="0 0 64 24" width="58" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M2 13 L10 13 L10 10 L36 10 L36 7 L42 7 L42 10 L62 10 L62 12 L42 12 L42 14 L36 14 L34 17 L18 17 L16 19 L12 19 L12 13 Z"/><line x1="36" y1="5" x2="42" y2="5"/></svg>`;
+  if (k.includes('sr') || k.includes('sniper'))
+    return `<svg viewBox="0 0 64 24" width="58" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M2 14 L10 14 L10 11 L48 11 L62 11 L62 13 L48 13 L46 15 L20 15 L18 18 L14 18 L14 14 Z"/><rect x="22" y="5" width="14" height="6" stroke="${color}"/><line x1="22" y1="8" x2="36" y2="8"/></svg>`;
+  if (k.includes('lmg'))
+    return `<svg viewBox="0 0 64 24" width="58" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M2 14 L8 14 L8 10 L20 10 L20 6 L34 6 L34 10 L46 10 L60 10 L60 14 L46 14 L46 18 L34 18 L34 14 L20 14 L18 18 L12 18 L12 14 Z"/><rect x="34" y="2" width="6" height="4" stroke="${color}"/></svg>`;
+  if (k.includes('rifle'))
+    return `<svg viewBox="0 0 64 24" width="58" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M2 13 L8 13 L8 10 L24 10 L24 7 L40 7 L40 10 L52 10 L60 10 L62 13 L52 13 L52 16 L46 16 L46 13 L24 13 L22 16 L18 16 L18 13 L8 13 Z"/><rect x="40" y="3" width="6" height="4" stroke="${color}"/><line x1="14" y1="13" x2="14" y2="20"/><path d="M14 20 L20 20"/></svg>`;
+  return `<svg viewBox="0 0 64 24" width="56" height="20" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round"><path d="M2 13 L8 13 L8 10 L24 10 L24 7 L40 7 L40 10 L52 10 L60 10 L62 13 L52 13 L52 16 L46 16 L46 13 L24 13 L22 16 L18 16 L18 13 L8 13 Z"/><rect x="40" y="3" width="6" height="4" stroke="${color}"/><line x1="14" y1="13" x2="14" y2="20"/><path d="M14 20 L20 20"/></svg>`;
+}
+
+/**
+ * Bundled files (assets/...) are served on the Tauri custom origin (e.g. tauri://localhost on macOS).
+ * Relative URLs in dynamically inserted <img> often fail to resolve; use absolute hrefs.
+ */
+function bundledAssetHref(path) {
+  if (path == null || path === '') return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  const rel = String(path).replace(/^\.\//, '').replace(/^\/+/, '');
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    let base = window.location && window.location.origin;
+    if (!base || base === 'null') {
+      const loc = window.location;
+      if (loc && loc.protocol && loc.host) base = `${loc.protocol}//${loc.host}`;
+    }
+    if (base && base !== 'null') return `${base}/${rel}`;
+  }
+  return rel;
+}
+
+function weaponIconHtml(w, forDetail, cardSelected) {
+  if (w.iconUrl) {
+    const cls = forDetail ? 'wc-icon wc-icon--detail' : 'wc-icon';
+    return `<img src="${esc(bundledAssetHref(w.iconUrl))}" alt="" class="${cls}" loading="lazy" draggable="false">`;
+  }
+  const color = forDetail ? 'var(--fg-0)' : (cardSelected ? 'var(--accent)' : 'currentColor');
+  return weaponSvg(w.class, color);
+}
+
+/* ============================================================
+   SAFE HTML
+   ============================================================ */
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+
+function render() {
+  const ws = document.querySelector('.workspace');
+  const scrollY = ws ? ws.scrollTop : 0;
+
+  document.getElementById('root').innerHTML = buildApp();
+
+  const newWs = document.querySelector('.workspace');
+  if (newWs) newWs.scrollTop = scrollY;
+
+  syncHotkeyListener();
+  syncTweaksDrag();
+}
+
+function buildApp() {
+  const game = gamesForRail().find(g => g.id === state.gameId);
+  const weapons = state.weaponState[state.gameId] || [];
+  const weapon = weapons.find(w => w.id === state.selected[state.gameId]);
+  const boundCount = weapons.filter(w => w.bound).length;
+  const macroTab = (state.macroTab === 'recoil' && !state.showRecoil) ? 'steps' : state.macroTab;
+  const macroTabs = [
+    { id: 'steps', label: 'Steps' },
+    { id: 'timeline', label: 'Timeline' },
+    ...(state.showRecoil ? [{ id: 'recoil', label: 'Recoil' }] : []),
+  ];
+
+  return `
+<div class="app-frame" data-density="${state.density}" data-layout="${state.layout}">
+  ${buildTitlebar()}
+  ${buildGameRail()}
+  <div class="workspace">
+    ${buildMasterRow(game, weapons.length, boundCount)}
+    ${buildWeaponGrid(weapons, state.selected[state.gameId])}
+    <div class="section-head" style="padding:8px 16px 0">
+      <span>Configuration</span>
+      <div class="sh-actions">
+        <button class="btn btn-primary" data-action="open-import">${IC.upload} Import Macro</button>
+      </div>
+    </div>
+    ${weapon ? buildDetail(weapon, macroTab, macroTabs) : ''}
+  </div>
+  ${buildStatusbar(game, boundCount)}
+  ${state.overlay === 'record' ? buildHotkeyOverlay(weapon) : ''}
+  ${state.overlay === 'import' ? buildImportOverlay() : ''}
+  ${state.toast ? `<div style="position:absolute;bottom:44px;left:50%;transform:translateX(-50%);background:var(--bg-3);border:1px solid var(--accent);color:var(--fg-0);font-family:var(--mono);font-size:11px;letter-spacing:0.08em;padding:8px 14px;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 1px var(--accent-soft);z-index:60;white-space:nowrap;animation:modalIn .2s ease">${esc(state.toast)}</div>` : ''}
+  ${buildTweaksPanel()}
+</div>`;
+}
+
+function buildTitlebar() {
+  return `
+<div class="titlebar" data-tauri-drag-region>
+  <div class="tb-left" data-tauri-drag-region>
+    <span class="tb-dot"></span>
+    <span class="tb-title"><strong>MacrosManager</strong> &nbsp;·&nbsp; v2.4.1</span>
+  </div>
+  <div class="tb-spacer" data-tauri-drag-region></div>
+  <div class="tb-status" data-tauri-drag-region>
+    <span class="pulse"></span>
+    <span>RUNTIME ACTIVE</span>
+  </div>
+  <div class="tb-btns">
+    <button type="button" class="tb-btn" title="Settings" data-action="toggle-tweaks">${IC.cog}</button>
+  </div>
+</div>`;
+}
+
+function buildGameRail() {
+  return `
+<div class="game-rail" role="tablist">
+  ${gamesForRail().map(g => {
+    const logoW = g.id === 'pubg' ? 64 : 38;
+    const logoH = g.id === 'pubg' ? 24 : 38;
+    return `
+    <button class="game-tab${state.gameId === g.id ? ' active' : ''}"
+            data-action="set-game" data-game="${g.id}" role="tab">
+      <div class="gt-logo-row">
+        <img src="${esc(bundledAssetHref(`assets/${g.id}.svg`))}" alt="${g.id}"
+             class="game-logo"
+             style="width:${logoW}px;height:${logoH}px;object-fit:contain;display:block;"
+             draggable="false">
+      </div>
+      <div class="gt-profile">${esc(g.profile)}</div>
+    </button>`;
+  }).join('')}
+</div>`;
+}
+
+function buildMasterRow(game, weaponCount, boundCount) {
+  return `
+<div class="master-row">
+  <div class="mr-info">
+    <div class="mr-label">ACTIVE PROFILE</div>
+    <div class="mr-value">${esc(game.name)}</div>
+    <div class="mr-meta">${boundCount}/${weaponCount} weapons bound · ${esc(game.profile)}</div>
+  </div>
+  <button class="toggle${state.masterOn ? ' on' : ''}" data-action="toggle-master" aria-label="Master macro toggle"></button>
+</div>`;
+}
+
+function buildWeaponGrid(weapons, selectedId) {
+  return `
+<div class="section-head">
+  <span>Weapons <span class="sh-count">· ${weapons.length}</span></span>
+  <div class="sh-actions">
+    <button class="btn-icon" title="Search">${IC.search}</button>
+    <button class="btn-icon" title="Filter">${IC.cog}</button>
+  </div>
+</div>
+<div class="weapon-grid">
+  ${weapons.map(w => {
+    const sel = selectedId === w.id;
+    return `
+    <button class="weapon-card${sel ? ' selected' : ''}${w.bound ? ' bound' : ''}"
+            data-action="select-weapon" data-weapon-id="${w.id}">
+      <div class="wc-img">${weaponIconHtml(w, false, sel)}</div>
+      <div class="wc-name">${esc(w.name)}</div>
+      <div class="wc-meta">
+        <span class="wc-class">${esc(w.class)}</span>
+        <span>${esc(w.caliber)}</span>
+      </div>
+      <div class="wc-bound">${w.bound ? `&#9673; ${esc(w.hotkey)}` : '&#9675; UNBOUND'}</div>
+    </button>`;
+  }).join('')}
+</div>`;
+}
+
+function buildDetail(weapon, macroTab, macroTabs) {
+  return `
+<div class="detail">
+  <div class="detail-head">
+    <div class="dh-icon">${weaponIconHtml(weapon, true, false)}</div>
+    <div class="dh-info">
+      <div class="dh-name">${esc(weapon.name)}</div>
+      <div class="dh-meta">
+        <span>${esc(weapon.class)}</span><span class="dot"></span>
+        <span>${esc(weapon.caliber)}</span><span class="dot"></span>
+        <span>${weapon.rpm} RPM</span><span class="dot"></span>
+        <span>RECOIL ${Math.round(weapon.recoil * 100)}</span>
+      </div>
+    </div>
+    <button class="btn-icon" title="More">${IC.cog}</button>
+  </div>
+
+  <div class="config-grid">
+    <button class="hotkey-btn" data-action="open-record">
+      <span class="hb-label">HOTKEY</span>
+      <span class="hb-key">${esc(weapon.hotkey)}</span>
+    </button>
+    <div class="config-cell">
+      <div class="cc-label">STATUS</div>
+      <div class="cc-value" style="color:${weapon.bound ? 'var(--ok)' : 'var(--fg-2)'}">
+        ${weapon.bound ? '&#9679; ARMED' : '&#9675; IDLE'}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head" style="padding:0 0 6px">
+      <span>Trigger Mode</span>
+    </div>
+    <div class="mode-seg">
+      ${['hold','toggle','tap'].map(m => `
+        <button class="${weapon.mode === m ? 'active' : ''}" data-action="set-mode" data-mode="${m}">${m}</button>
+      `).join('')}
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head" style="padding:0 0 6px">
+      <span>Macro</span>
+      <div class="sh-actions">
+        <button class="btn btn-ghost">${IC.upload} Replace</button>
+      </div>
+    </div>
+    <div class="macro-block">
+      <div class="macro-tabs">
+        ${macroTabs.map(t => `
+          <button class="macro-tab${macroTab === t.id ? ' active' : ''}"
+                  data-action="set-macro-tab" data-tab="${t.id}">${t.label}</button>
+        `).join('')}
+      </div>
+      <div class="macro-body">
+        ${macroTab === 'steps'    ? buildSteps(weapon) : ''}
+        ${macroTab === 'timeline' ? buildTimeline(weapon) : ''}
+        ${macroTab === 'recoil'   ? buildRecoil() : ''}
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+function buildSteps(weapon) {
+  const steps = stepsForWeapon(weapon);
+  return `
+<div class="steps-list">
+  ${steps.map((s, i) => `
+    <div class="step-row">
+      <div class="sr-idx">${String(i + 1).padStart(2, '0')}</div>
+      <div class="sr-time">${s.t}ms</div>
+      <div class="sr-action">${String(s.type || '').toUpperCase()} · ${esc(s.action)}</div>
+      <div class="sr-value">${esc(s.value)}</div>
+    </div>
+  `).join('')}
+</div>`;
+}
+
+function buildTimeline(weapon) {
+  const steps = stepsForWeapon(weapon);
+  const max = Math.max(700, ...(steps.map(s => s.t)), 1);
+  const n = steps.length;
+  return `
+<div class="timeline">
+  <div class="timeline-axis">
+    <span>0ms</span><span>${Math.round(max * 0.25)}</span><span>${Math.round(max * 0.5)}</span><span>${Math.round(max * 0.75)}</span><span>${max}ms</span>
+  </div>
+  <div class="timeline-track">
+    ${steps.map(s => {
+      const left = (s.t / max) * 100;
+      const isMouse = s.type === 'mouse';
+      return `<div class="timeline-event ${isMouse ? 'is-mouse' : 'is-move'}"
+                   style="left:${left}%;width:${isMouse ? 1.6 : 1.0}%"
+                   title="${s.t}ms · ${s.action} ${s.value}"></div>`;
+    }).join('')}
+  </div>
+  <div class="timeline-foot">
+    <span>${n} events</span>
+    <span>DURATION ${max}ms</span>
+  </div>
+</div>`;
+}
+
+function buildRecoil() {
+  const pts = RECOIL_PATH.map(([dx, dy]) => [50 + dx, 10 + dy]);
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ');
+  const dots = pts.map(([x, y], i) =>
+    `<circle cx="${x}" cy="${y}" r="${i === 0 ? 1.2 : 0.7}" fill="${i === 0 ? '#fff' : 'var(--accent)'}"/>`
+  ).join('');
+  return `
+<div class="recoil-wrap">
+  <div class="crosshair-h"></div>
+  <div class="crosshair-v"></div>
+  <svg class="recoil-svg" viewBox="0 0 100 120" preserveAspectRatio="none">
+    <path d="${d}" fill="none" stroke="rgba(229,72,77,0.35)" stroke-width="0.8"/>
+    <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="0.5"/>
+    ${dots}
+  </svg>
+  <div class="recoil-foot">
+    <span>20 PT · COMPENSATION &#8722;82%</span>
+    <span>VERTICAL 86 · LATERAL &#177;13</span>
+  </div>
+</div>`;
+}
+
+function buildStatusbar(game, boundCount) {
+  return `
+<div class="statusbar">
+  <span class="sb-pill">${esc(game.code)}</span>
+  <span>${boundCount} BOUND</span>
+  <span class="sb-spacer"></span>
+  ${state.masterOn ? '<span class="sb-ok">&#9679; MACROS ARMED</span>' : '<span>&#9675; DISARMED</span>'}
+  <span>·</span>
+  <span>1.2ms LATENCY</span>
+</div>`;
+}
+
+function buildHotkeyOverlay(weapon) {
+  const cap = state.capturedKey;
+  return `
+<div class="overlay-bg" data-overlay-bg>
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">// REC · ${esc(weapon?.name || 'WEAPON')}</div>
+      <button class="modal-close" data-action="close-overlay">${IC.x}</button>
+    </div>
+    <div class="kc-face">
+      <div class="kc-prompt">
+        <span class="kc-rec-dot"></span>
+        ${cap ? 'KEY CAPTURED' : 'PRESS ANY KEY OR MOUSE BUTTON'}
+      </div>
+      <div class="kc-key">${cap ? esc(cap) : '_ _'}</div>
+      <div class="kc-hint">
+        ${cap ? 'Confirm to bind, or press another key to overwrite.' : 'Listening&hellip; release combo to capture.'}
+      </div>
+    </div>
+    <div class="kc-actions">
+      <button class="btn" data-action="clear-hotkey">Clear</button>
+      <button class="btn btn-ghost" data-action="close-overlay">Cancel</button>
+      <button class="btn btn-primary" data-action="save-hotkey"
+              ${!cap ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+        ${IC.check} Bind Key
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+
+function buildImportOverlay() {
+  const file = state.importFile;
+  const prog = state.importProgress;
+  const importGame = gamesForRail().find(g => g.id === state.importGame);
+  const wList = state.weaponState[state.importGame];
+  const importWeapon = wList.find(w => w.id === state.importWeaponId) || wList[0];
+  const logoW = importGame.id === 'pubg' ? 18 : 12;
+  const logoH = importGame.id === 'pubg' ? 7 : 12;
+
+  return `
+<div class="overlay-bg" data-overlay-bg>
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">// IMPORT MACRO</div>
+      <button class="modal-close" data-action="close-overlay">${IC.x}</button>
+    </div>
+
+    ${!file ? `
+    <div class="dropzone" id="drop-zone" data-action="pick-fake-file">
+      <div class="dz-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div class="dz-title">Drop macro file here</div>
+      <div class="dz-sub">or click to browse</div>
+      <div class="dz-formats">.MAC &nbsp;·&nbsp; .LUA &nbsp;·&nbsp; .JSON &nbsp;·&nbsp; .AHK</div>
+    </div>
+    ` : `
+    <div class="import-row">
+      <div class="ir-icon">${IC.file}</div>
+      <div class="ir-info">
+        <div class="ir-name">${esc(file.name)}</div>
+        <div class="ir-meta" id="ir-meta">${esc(file.size)} · ${file.events} events${prog < 100 ? ` · parsing ${prog}%` : ''}</div>
+      </div>
+      <div class="ir-progress" id="ir-prog">${prog < 100 ? prog + '%' : '&#10003; READY'}</div>
+    </div>
+
+    <div>
+      <div class="section-head" style="padding:4px 0 6px"><span>Assign to</span></div>
+      <div class="assign-grid">
+        <div class="assign-cell" data-action="cycle-import-game">
+          <div class="ac-label">GAME</div>
+          <div class="ac-value">
+            <span style="display:inline-flex;align-items:center;gap:6px">
+              <img src="${esc(bundledAssetHref(`assets/${importGame.id}.svg`))}"
+                   style="width:${logoW}px;height:${logoH}px;object-fit:contain;filter:brightness(0) invert(1) opacity(1);"
+                   draggable="false">
+              ${esc(importGame.code)}
+            </span>
+            ${IC.chevronDown}
+          </div>
+        </div>
+        <div class="assign-cell" data-action="cycle-import-weapon">
+          <div class="ac-label">WEAPON</div>
+          <div class="ac-value">
+            <span>${esc(importWeapon.name)}</span>
+            ${IC.chevronDown}
+          </div>
+        </div>
+      </div>
+    </div>
+    `}
+
+    <div class="kc-actions">
+      <button class="btn btn-ghost" data-action="close-overlay">Cancel</button>
+      <button class="btn btn-primary" id="btn-import-confirm" data-action="confirm-import"
+              ${(!file || !state.importPendingJson || prog < 100) ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+        ${IC.check} Import &amp; Assign
+      </button>
+    </div>
+  </div>
+</div>`;
+}
+
+function buildTweaksPanel() {
+  if (!state.tweaksOpen) return '';
+  const segBtn = (action, attr, val, cur, label) =>
+    `<button data-action="${action}" data-${attr}="${val}"
+             style="flex:1;background:${cur===val ? 'var(--bg-3)' : 'transparent'};
+               border:${cur===val ? '1px solid var(--line-2)' : '1px solid transparent'};
+               color:${cur===val ? 'var(--fg-0)' : 'var(--fg-2)'};
+               font-family:var(--mono);font-size:9px;letter-spacing:0.08em;
+               padding:5px 4px;border-radius:3px;cursor:pointer;transition:all 0.14s;">${label}</button>`;
+
+  return `
+<div id="tweaks-panel" style="position:absolute;right:16px;bottom:48px;z-index:100;width:256px;
+  background:rgba(12,13,16,.96);border:1px solid var(--line-2);border-radius:10px;
+  box-shadow:0 20px 40px rgba(0,0,0,.6);overflow:hidden;">
+  <div id="tweaks-hd" style="display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px;border-bottom:1px solid var(--line-1);cursor:move;user-select:none;">
+    <span style="font-family:var(--mono);font-size:10px;letter-spacing:0.14em;color:var(--accent);text-transform:uppercase;">// TWEAKS</span>
+    <button data-action="toggle-tweaks" style="background:transparent;border:none;color:var(--fg-2);cursor:pointer;padding:2px;display:grid;place-items:center;">${IC.x}</button>
+  </div>
+  <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px;">
+
+    <div>
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--fg-3);text-transform:uppercase;margin-bottom:6px;">WEAPON VIEW</div>
+      <div style="display:flex;background:var(--bg-1);border:1px solid var(--line-1);border-radius:5px;padding:2px;gap:2px;">
+        ${segBtn('set-layout','layout','grid',state.layout,'Grid')}
+        ${segBtn('set-layout','layout','dense',state.layout,'2-Col')}
+        ${segBtn('set-layout','layout','list',state.layout,'List')}
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--fg-3);text-transform:uppercase;margin-bottom:6px;">DENSITY</div>
+      <div style="display:flex;background:var(--bg-1);border:1px solid var(--line-1);border-radius:5px;padding:2px;gap:2px;">
+        ${segBtn('set-density','density','comfortable',state.density,'Comfortable')}
+        ${segBtn('set-density','density','compact',state.density,'Compact')}
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-family:var(--mono);font-size:10px;color:var(--fg-1);">Show recoil pattern tab</span>
+      <button class="toggle${state.showRecoil ? ' on' : ''}" data-action="toggle-recoil" aria-label="Toggle recoil tab"></button>
+    </div>
+
+  </div>
+</div>`;
+}
+
+/* ============================================================
+   HOTKEY LISTENER
+   ============================================================ */
+
+function syncHotkeyListener() {
+  if (hotkeyListener) {
+    window.removeEventListener('keydown', hotkeyListener);
+    hotkeyListener = null;
+  }
+  if (state.overlay === 'record') {
+    hotkeyListener = (e) => {
+      e.preventDefault();
+      const parts = [];
+      if (e.ctrlKey)  parts.push('CTRL');
+      if (e.altKey)   parts.push('ALT');
+      if (e.shiftKey) parts.push('SHIFT');
+      const raw = e.key;
+      const k = raw === ' ' ? 'SPACE' : raw.length === 1 ? raw.toUpperCase() : raw.toUpperCase();
+      if (!['CONTROL','ALT','SHIFT','META'].includes(k)) parts.push(k);
+      if (parts.length) setState({ capturedKey: parts.join(' + ') });
+    };
+    window.addEventListener('keydown', hotkeyListener);
+  }
+}
+
+/* ============================================================
+   TWEAKS PANEL DRAG
+   ============================================================ */
+
+function syncTweaksDrag() {
+  if (!state.tweaksOpen) return;
+  const panel = document.getElementById('tweaks-panel');
+  const hd = document.getElementById('tweaks-hd');
+  if (!panel || !hd) return;
+
+  hd.addEventListener('mousedown', (e) => {
+    if (e.target.closest('[data-action]')) return;
+    e.preventDefault();
+    const frame = panel.offsetParent;
+    const fr = frame ? frame.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const pr = panel.getBoundingClientRect();
+    const ox = e.clientX - pr.left;
+    const oy = e.clientY - pr.top;
+
+    function move(ev) {
+      const nx = Math.max(4, Math.min(fr.width - pr.width - 4, ev.clientX - fr.left - ox));
+      const ny = Math.max(4, Math.min(fr.height - pr.height - 4, ev.clientY - fr.top - oy));
+      panel.style.left   = nx + 'px';
+      panel.style.top    = ny + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    function up() {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+}
+
+/* ============================================================
+   IMPORT PROGRESS SIMULATION
+   ============================================================ */
+
+function startImportProgress() {
+  if (importProgressTimer) clearInterval(importProgressTimer);
+  state.importProgress = 0;
+  importProgressTimer = setInterval(() => {
+    state.importProgress = Math.min(100, Math.round(state.importProgress + 14 + Math.random() * 12));
+    const p = state.importProgress;
+    const progEl = document.getElementById('ir-prog');
+    const metaEl = document.getElementById('ir-meta');
+    if (progEl) progEl.innerHTML = p < 100 ? p + '%' : '&#10003; READY';
+    if (metaEl && state.importFile) {
+      metaEl.textContent = `${state.importFile.size} · ${state.importFile.events} events${p < 100 ? ` · parsing ${p}%` : ''}`;
+    }
+    if (p >= 100) {
+      clearInterval(importProgressTimer);
+      importProgressTimer = null;
+      const btn = document.getElementById('btn-import-confirm');
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+    }
+  }, 80);
+}
+
+function showToast(msg) {
+  if (toastTimer) clearTimeout(toastTimer);
+  state.toast = msg;
+  render();
+  toastTimer = setTimeout(() => { state.toast = null; render(); }, 2200);
+}
+
+function closeOverlay() {
+  if (importProgressTimer) { clearInterval(importProgressTimer); importProgressTimer = null; }
+  state.overlay = null;
+  state.capturedKey = null;
+  state.importFile = null;
+  state.importProgress = 0;
+  state.importPendingJson = null;
+  render();
+}
+
+function triggerMacroFilePick() {
+  const el = document.getElementById('macro-file-json');
+  if (el) el.click();
+}
+
+function onMacroFileChosen(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result;
+    state.importPendingJson = text;
+    let events = 0;
+    try { events = (JSON.parse(text).steps || []).length; } catch (_) { events = 0; }
+    state.importFile = { name: file.name, size: `${(file.size / 1024).toFixed(1)} KB`, events };
+    state.importProgress = 100;
+    render();
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('macro-file-json')?.addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) onMacroFileChosen(f);
+  e.target.value = '';
+});
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+
+document.addEventListener('click', (e) => {
+  /* Overlay background click — only when clicking the bg itself */
+  if (e.target.hasAttribute('data-overlay-bg')) {
+    closeOverlay();
+    return;
+  }
+
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+
+  switch (btn.dataset.action) {
+    case 'set-game':
+      (async () => {
+        try {
+          const res = await tauriInvoke('set_active_game', { gameId: btn.dataset.game });
+          applyLoadResponse(res);
+          render();
+        } catch (err) {
+          showToast(String(err));
+        }
+      })();
+      break;
+
+    case 'select-weapon':
+      setState({ selected: { ...state.selected, [state.gameId]: btn.dataset.weaponId } });
+      break;
+
+    case 'toggle-master':
+      (async () => {
+        try {
+          const res = await tauriInvoke('set_master_enabled', { on: !state.masterOn });
+          applyLoadResponse(res);
+          render();
+        } catch (err) {
+          showToast(String(err));
+        }
+      })();
+      break;
+
+    case 'open-record':
+      setState({ overlay: 'record', capturedKey: null });
+      break;
+
+    case 'open-import': {
+      const g = state.gameId;
+      setState({ overlay: 'import', importFile: null, importProgress: 0, importPendingJson: null, importGame: g, importWeaponId: state.selected[g] });
+      break;
+    }
+
+    case 'close-overlay':
+      closeOverlay();
+      break;
+
+    case 'clear-hotkey':
+      setState({ capturedKey: null });
+      break;
+
+    case 'save-hotkey': {
+      if (!state.capturedKey) break;
+      const key = state.capturedKey;
+      const g = state.gameId;
+      const wid = state.selected[g];
+      (async () => {
+        try {
+          const res = await tauriInvoke('set_weapon_hotkey', { gameId: g, weaponId: wid, label: key });
+          applyLoadResponse(res);
+          state.overlay = null;
+          state.capturedKey = null;
+          render();
+          showToast(`Bound ${key}`);
+        } catch (err) {
+          showToast(String(err));
+        }
+      })();
+      break;
+    }
+
+    case 'set-mode': {
+      const g = state.gameId;
+      const wid = state.selected[g];
+      (async () => {
+        try {
+          const res = await tauriInvoke('set_weapon_mode', {
+            gameId: g,
+            weaponId: wid,
+            mode: btn.dataset.mode,
+          });
+          applyLoadResponse(res);
+          render();
+        } catch (err) {
+          showToast(String(err));
+        }
+      })();
+      break;
+    }
+
+    case 'set-macro-tab':
+      setState({ macroTab: btn.dataset.tab });
+      break;
+
+    case 'pick-fake-file':
+      triggerMacroFilePick();
+      break;
+
+    case 'cycle-import-game': {
+      const ids = gamesForRail().map(g => g.id);
+      const next = ids[(ids.indexOf(state.importGame) + 1) % ids.length];
+      const w0 = (state.weaponState[next] || [])[0];
+      setState({ importGame: next, importWeaponId: w0 ? w0.id : state.importWeaponId });
+      break;
+    }
+
+    case 'cycle-import-weapon': {
+      const wList = state.weaponState[state.importGame];
+      const ids = wList.map(w => w.id);
+      setState({ importWeaponId: ids[(ids.indexOf(state.importWeaponId) + 1) % ids.length] });
+      break;
+    }
+
+    case 'confirm-import': {
+      if (!state.importFile || state.importProgress < 100 || !state.importPendingJson) break;
+      const g = state.importGame;
+      const wid = state.importWeaponId;
+      const fname = state.importFile.name;
+      (async () => {
+        try {
+          const res = await tauriInvoke('import_macro_json', {
+            json: state.importPendingJson,
+            assign: { gameId: g, weaponId: wid },
+          });
+          applyLoadResponse(res);
+          state.overlay = null;
+          state.importFile = null;
+          state.importProgress = 0;
+          state.importPendingJson = null;
+          render();
+          showToast(`Imported ${fname}`);
+        } catch (err) {
+          showToast(String(err));
+        }
+      })();
+      break;
+    }
+
+    case 'toggle-tweaks':
+      setState({ tweaksOpen: !state.tweaksOpen });
+      break;
+
+    case 'toggle-recoil':
+      setState({ showRecoil: !state.showRecoil });
+      break;
+
+    case 'set-layout':
+      setState({ layout: btn.dataset.layout });
+      break;
+
+    case 'set-density':
+      setState({ density: btn.dataset.density });
+      break;
+  }
+});
+
+/* Drag-and-drop on import dropzone */
+document.addEventListener('dragover', (e) => {
+  const dz = e.target.closest('#drop-zone');
+  if (!dz) return;
+  e.preventDefault();
+  dz.classList.add('over');
+});
+document.addEventListener('dragleave', (e) => {
+  const dz = e.target.closest('#drop-zone');
+  if (dz) dz.classList.remove('over');
+});
+document.addEventListener('drop', (e) => {
+  const dz = e.target.closest('#drop-zone');
+  if (!dz) return;
+  e.preventDefault();
+  dz.classList.remove('over');
+  const f = e.dataTransfer?.files?.[0];
+  if (f) onMacroFileChosen(f);
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+loadConfig();
+</script>
+</body>
+</html>
