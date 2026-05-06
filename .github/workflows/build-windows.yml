@@ -1,0 +1,46 @@
+# Builds NSIS + MSI Windows installers on GitHub-hosted Windows runners.
+# Use this from Linux/macOS/WSL: push the repo to GitHub → Actions → this workflow → download artifacts.
+name: Build Windows installers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: npm install
+        run: npm ci
+
+      - name: Build Tauri (Windows bundles)
+        run: npm run build
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacrosManager-windows-nsis
+          if-no-files-found: warn
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacrosManager-windows-msi
+          if-no-files-found: warn
+          path: src-tauri/target/release/bundle/msi/*.msi

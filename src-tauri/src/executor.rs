@@ -29,8 +29,12 @@ mod imp {
         MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
         MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK,
         MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MAPVK_VK_TO_VSC, INPUT_KEYBOARD, INPUT_MOUSE,
-        MOUSE_EVENT_FLAGS, VIRTUAL_KEY, XBUTTON1, XBUTTON2,
+        MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
+
+    /// Mouse order value for SendInput X buttons (see MS docs; not re-exported as XBUTTON1/2 in windows 0.58).
+    const XBUTTON1_DATA: u32 = 0x0001;
+    const XBUTTON2_DATA: u32 = 0x0002;
 
     use crate::executor::ExecError;
     use crate::types::MacroStep;
@@ -101,8 +105,8 @@ mod imp {
             "left" | "lmb" => (MOUSEEVENTF_LEFTDOWN, 0),
             "right" | "rmb" => (MOUSEEVENTF_RIGHTDOWN, 0),
             "middle" | "mmb" => (MOUSEEVENTF_MIDDLEDOWN, 0),
-            "x1" => (MOUSEEVENTF_XDOWN, XBUTTON1 as u32),
-            "x2" => (MOUSEEVENTF_XDOWN, XBUTTON2 as u32),
+            "x1" => (MOUSEEVENTF_XDOWN, XBUTTON1_DATA),
+            "x2" => (MOUSEEVENTF_XDOWN, XBUTTON2_DATA),
             _ => return Err(ExecError::UnknownButton(button.into())),
         })
     }
@@ -112,8 +116,8 @@ mod imp {
             "left" | "lmb" => (MOUSEEVENTF_LEFTUP, 0),
             "right" | "rmb" => (MOUSEEVENTF_RIGHTUP, 0),
             "middle" | "mmb" => (MOUSEEVENTF_MIDDLEUP, 0),
-            "x1" => (MOUSEEVENTF_XUP, XBUTTON1 as u32),
-            "x2" => (MOUSEEVENTF_XUP, XBUTTON2 as u32),
+            "x1" => (MOUSEEVENTF_XUP, XBUTTON1_DATA),
+            "x2" => (MOUSEEVENTF_XUP, XBUTTON2_DATA),
             _ => return Err(ExecError::UnknownButton(button.into())),
         })
     }

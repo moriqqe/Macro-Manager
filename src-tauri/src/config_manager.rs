@@ -34,7 +34,11 @@ pub fn load_or_default() -> Result<AppConfig, ConfigError> {
     let mut s = String::new();
     f.read_to_string(&mut s)?;
     let mut cfg: AppConfig = serde_json::from_str(&s)?;
-    if profile_manager::apply_default_weapon_icons(&mut cfg) {
+    let mut need_save = profile_manager::apply_default_weapon_icons(&mut cfg);
+    if profile_manager::sync_weapons_to_defaults(&mut cfg) {
+        need_save = true;
+    }
+    if need_save {
         let _ = save(&cfg);
     }
     Ok(cfg)

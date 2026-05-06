@@ -23,12 +23,13 @@ On first launch, a default `config.json` is created. The app may refresh weapon 
 
 ### Games and UI
 
-- Profiles for **PUBG**, **Rust**, and **Counter-Strike 2** (plus sample macros) ship with the default config.
+- Profiles for **PUBG**, **Rust**, and **Counter-Strike 2** (plus sample macros) ship with the default config. Built-in lists **do not** include AWP, Kar98k, or UMP45; if an older `config.json` still had those entries, they are **removed on load** so the UI matches the app.
 - Weapon and game-tab icons are embedded as **`data:` URLs** at **Rust compile time** (see `src-tauri/build.rs`) from `assets/` sources, so the WebView does not need to load separate image files.
 - **Global hotkeys and low-level input hooks run on Windows only.** On macOS and Linux the UI and config work, but background hook behavior is not active the same way as on Windows.
 
 ### Troubleshooting
 
+- If `npm run build` fails on Linux or WSL with **`failed to run linuxdeploy`**, AppImage tooling often needs FUSE or `APPIMAGE_EXTRACT_AND_RUN=1`. This repo’s `bundle.targets` skips **AppImage** so **`deb` / `rpm`** (and Windows/macOS targets on those hosts) still build; add `appimage` back only if you need it and can run `linuxdeploy` successfully.
 - If the window shows broken images, run a fresh build and ensure you start the app via **Tauri** or the packaged binary (not a raw `file://` copy of `index.html` opened alone).
 - If the UI fails to load configuration, check the developer console (when running in dev mode) and that `config.json` is readable.
 
@@ -64,13 +65,25 @@ npm run dev
 
 This runs `tauri dev` (webview loads embedded assets; the Tauri IPC API is available to `index.html`).
 
-### Production build
+### Production build (installers)
 
-```bash
-npm run build
-```
+**`npm run build` runs only on Windows** (NSIS/MSI installers and release binary). On Linux or macOS it exits with a short message so you do not assume a Linux `.deb`/`.rpm` build from that script.
 
-Artifacts appear under `src-tauri/target/release/` and platform-specific bundle folders (e.g. `src-tauri/target/release/bundle/`).
+- **On Windows:** from the repo root run `npm run build`. Artifacts: `src-tauri/target/release/bundle/nsis/*.exe`, `…/msi/*.msi`, etc.
+- **From Linux / macOS / WSL / CI:** use the GitHub Actions workflow below for Windows `.exe` / `.msi`, or run `cd src-tauri && cargo build --release` if you only need a **local non-bundled** binary on that OS (no Tauri bundler step).
+
+`cargo tauri build` can still be invoked manually on non-Windows if you need bundles there; the **npm** `build` script is intentionally Windows-only.
+
+### Windows `.exe` from Linux / macOS / WSL (recommended)
+
+Cross-compiling Tauri for Windows from non-Windows hosts is fragile (toolchains, WebView2). The practical approach is **CI on a Windows runner**:
+
+1. Push this repository to **GitHub** (or fork it).
+2. Open **Actions** → workflow **“Build Windows installers”**.
+3. Choose **Run workflow** (the workflow is manual-only so it does not spend CI minutes on every push).
+4. When it finishes, download the artifacts **MacrosManager-windows-nsis** (setup `.exe`) and/or **MacrosManager-windows-msi** (`.msi`).
+
+You need a Windows machine only in the cloud; your local OS can stay Linux, WSL, or macOS.
 
 ### Rust-only checks
 

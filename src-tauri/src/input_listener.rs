@@ -43,7 +43,11 @@ mod win {
     use crate::types::{AppConfig, ExecutionMode, RunMode};
 
     static RT: OnceLock<Arc<InputRuntime>> = OnceLock::new();
-    static PRESSED: Mutex<HashSet<(u32, u32)>> = Mutex::new(HashSet::new());
+    static PRESSED: OnceLock<Mutex<HashSet<(u32, u32)>>> = OnceLock::new();
+
+    fn pressed() -> &'static Mutex<HashSet<(u32, u32)>> {
+        PRESSED.get_or_init(|| Mutex::new(HashSet::new()))
+    }
 
     pub fn spawn(runtime: Arc<InputRuntime>) {
         let _ = RT.set(runtime);
@@ -63,7 +67,7 @@ mod win {
         let key = (vk, mods);
 
         if down {
-            let mut g = match PRESSED.lock() {
+            let mut g = match pressed().lock() {
                 Ok(x) => x,
                 Err(_) => return,
             };
@@ -72,7 +76,7 @@ mod win {
             }
             g.insert(key);
         } else if up {
-            if let Ok(mut g) = PRESSED.lock() {
+            if let Ok(mut g) = pressed().lock() {
                 g.remove(&key);
             }
         }

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::types::{
     AppConfig, ExecutionMode, GameProfile, MacroDefinition, MacroStep, WeaponBinding, WeaponTemplate,
 };
@@ -30,6 +32,38 @@ pub fn apply_default_weapon_icons(cfg: &mut AppConfig) -> bool {
                 w.icon_url = Some(bundled.clone());
                 changed = true;
             }
+        }
+    }
+    changed
+}
+
+/// Drops weapons and bindings that no longer exist in built-in defaults (e.g. removed guns).
+/// Reorders remaining weapons to match default profile order.
+pub fn sync_weapons_to_defaults(cfg: &mut AppConfig) -> bool {
+    let default = default_config();
+    let mut changed = false;
+    for gp in &mut cfg.game_profiles {
+        let Some(def_gp) = default.game_profiles.iter().find(|g| g.id == gp.id) else {
+            continue;
+        };
+        let allowed: HashSet<_> = def_gp.weapons.iter().map(|w| w.id.as_str()).collect();
+        let before_w = gp.weapons.len();
+        gp.weapons.retain(|w| allowed.contains(w.id.as_str()));
+        if gp.weapons.len() != before_w {
+            changed = true;
+        }
+        let order: Vec<_> = def_gp.weapons.iter().map(|w| w.id.clone()).collect();
+        gp.weapons.sort_by_key(|w| {
+            order
+                .iter()
+                .position(|id| id == &w.id)
+                .unwrap_or(usize::MAX)
+        });
+        let before_b = gp.bindings.len();
+        gp.bindings
+            .retain(|b| allowed.contains(b.weapon_id.as_str()));
+        if gp.bindings.len() != before_b {
+            changed = true;
         }
     }
     changed
