@@ -19,12 +19,12 @@ Configuration lives in your OS user config directory, under a **`MacrosManager`*
 | Windows | `%APPDATA%\MacrosManager\config.json` |
 | Linux  | `~/.config/MacrosManager/config.json` |
 
-On first launch, a default `config.json` is created. The app may refresh bundled weapon icon paths from built-in defaults when older entries used remote URLs.
+On first launch, a default `config.json` is created. The app may refresh weapon `iconUrl` values from built-in defaults when older entries used `assets/...` paths or remote URLs.
 
 ### Games and UI
 
 - Profiles for **PUBG**, **Rust**, and **Counter-Strike 2** (plus sample macros) ship with the default config.
-- Weapon icons are loaded from embedded files under `assets/weapons/` (no network required for icons after build).
+- Weapon and game-tab icons are embedded as **`data:` URLs** at **Rust compile time** (see `src-tauri/build.rs`) from `assets/` sources, so the WebView does not need to load separate image files.
 - **Global hotkeys and low-level input hooks run on Windows only.** On macOS and Linux the UI and config work, but background hook behavior is not active the same way as on Windows.
 
 ### Troubleshooting
@@ -86,7 +86,8 @@ If `cargo` errors around `generate_context!` or missing `.rlib` after interrupte
 | Path | Role |
 |------|------|
 | `index.html` | Main UI, invokes Tauri commands |
-| `assets/` | Game logos, weapon images (`assets/weapons/{pubg,rust,cs2}/`) |
+| `assets/` | Source images for weapons and game logos (read by **`build.rs`** at compile time) |
+| `src-tauri/build.rs` | Encodes those files as `data:` URLs into the Rust binary (weapon + tab icons) |
 | `web-root/` | Symlink bundle consumed as `frontendDist` |
 | `src-tauri/` | Rust app: config, commands, macro engine, **Windows** input listener |
 

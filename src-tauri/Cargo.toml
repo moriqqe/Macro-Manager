@@ -1,12 +1,13 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.1.0-beta.0"
 description = "MacrosManager — Tauri desktop macro tool"
 authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
+build = "build.rs"
 
 [lib]
 name = "app_lib"
@@ -14,9 +15,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.0", features = [] }
+base64 = "0.22"
 
 [dependencies]
 serde_json = "1.0"
+base64 = "0.22"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.0", features = [] }

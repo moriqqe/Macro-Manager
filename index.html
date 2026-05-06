@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MacrosManager</title>
+<title>MacrosManager · 0.1.0 beta</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -657,7 +657,7 @@ html.tauri-macos .titlebar {
 </style>
 </head>
 <body>
-<input type="file" id="macro-file-json" accept=".json,application/json" style="display:none" />
+<input type="file" id="macro-file-json" accept=".json,application/json,.amc" style="display:none" />
 <div id="root"></div>
 <script>
 /* ============================================================
@@ -665,9 +665,19 @@ html.tauri-macos .titlebar {
    ============================================================ */
 
 function tauriInvoke(cmd, args) {
-  const c = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
-  if (!c) return Promise.reject(new Error('Tauri API not available (open via tauri dev)'));
-  return c(cmd, args || {});
+  const invoke =
+    (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
+    (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function'
+      ? window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__)
+      : null);
+  if (!invoke) {
+    return Promise.reject(
+      new Error(
+        'Tauri API not available — run `npm run dev` in this project (opening index.html in a normal browser will not load Rust/IPC).'
+      )
+    );
+  }
+  return invoke(cmd, args || {});
 }
 
 (function initMacWindowChrome() {
@@ -730,7 +740,7 @@ const state = {
   importProgress: 0,
   importGame: 'pubg',
   importWeaponId: 'm416',
-  importPendingJson: null,
+  importPending: null,
   toast: null,
   tweaksOpen: false,
 };
@@ -744,6 +754,7 @@ function applyLoadResponse(res) {
     name: g.name,
     sub: g.sub,
     profile: g.profile,
+    logoUrl: g.logoUrl,
   }));
   state.selected = Object.assign({}, state.selected || {});
   for (const g of res.ui.games || []) {
@@ -785,7 +796,7 @@ async function loadConfig() {
     render();
   } catch (e) {
     console.error(e);
-    showToast('Load failed — use tauri dev');
+    showToast('Load failed — run npm run dev (browser preview has no Tauri IPC).');
   }
 }
 
@@ -832,28 +843,42 @@ function weaponSvg(cls, color) {
 }
 
 /**
- * Bundled files (assets/...) are served on the Tauri custom origin (e.g. tauri://localhost on macOS).
- * Relative URLs in dynamically inserted <img> often fail to resolve; use absolute hrefs.
+ * Bundled files (assets/...) must load with an absolute URL. On macOS, Tauri uses
+ * the tauri:// scheme; window.location.origin is often the string "null" (opaque origin),
+ * so we resolve relative to location.href or build tauri://localhost/... explicitly.
  */
 function bundledAssetHref(path) {
   if (path == null || path === '') return path;
-  if (/^https?:\/\//i.test(path)) return path;
-  const rel = String(path).replace(/^\.\//, '').replace(/^\/+/, '');
-  if (typeof window !== 'undefined' && window.__TAURI__) {
-    let base = window.location && window.location.origin;
-    if (!base || base === 'null') {
-      const loc = window.location;
-      if (loc && loc.protocol && loc.host) base = `${loc.protocol}//${loc.host}`;
+  const s = String(path).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^data:/i.test(s)) return s;
+  const rel = s.replace(/^\.\//, '').replace(/^\/+/, '');
+  if (typeof window !== 'undefined' && window.location && window.location.href) {
+    try {
+      return new URL(rel, window.location.href).href;
+    } catch (_) { /* nonstandard base in very old engines */ }
+    const { protocol, host, hostname } = window.location;
+    if (protocol === 'http:' || protocol === 'https:') {
+      return `${protocol}//${host}/${rel}`;
     }
-    if (base && base !== 'null') return `${base}/${rel}`;
+    if (protocol === 'tauri:') {
+      const h = hostname || host || 'localhost';
+      return `tauri://${h}/${rel}`;
+    }
   }
   return rel;
+}
+
+function gameLogoSrc(g) {
+  if (g && g.logoUrl) return g.logoUrl;
+  if (!g || !g.id) return '';
+  return bundledAssetHref(`assets/${g.id}.svg`);
 }
 
 function weaponIconHtml(w, forDetail, cardSelected) {
   if (w.iconUrl) {
     const cls = forDetail ? 'wc-icon wc-icon--detail' : 'wc-icon';
-    return `<img src="${esc(bundledAssetHref(w.iconUrl))}" alt="" class="${cls}" loading="lazy" draggable="false">`;
+    return `<img src="${esc(bundledAssetHref(w.iconUrl))}" alt="" class="${cls}" draggable="false">`;
   }
   const color = forDetail ? 'var(--fg-0)' : (cardSelected ? 'var(--accent)' : 'currentColor');
   return weaponSvg(w.class, color);
@@ -924,7 +949,7 @@ function buildTitlebar() {
 <div class="titlebar" data-tauri-drag-region>
   <div class="tb-left" data-tauri-drag-region>
     <span class="tb-dot"></span>
-    <span class="tb-title"><strong>MacrosManager</strong> &nbsp;·&nbsp; v2.4.1</span>
+    <span class="tb-title"><strong>MacrosManager</strong> &nbsp;·&nbsp; 0.1.0 beta</span>
   </div>
   <div class="tb-spacer" data-tauri-drag-region></div>
   <div class="tb-status" data-tauri-drag-region>
@@ -947,7 +972,7 @@ function buildGameRail() {
     <button class="game-tab${state.gameId === g.id ? ' active' : ''}"
             data-action="set-game" data-game="${g.id}" role="tab">
       <div class="gt-logo-row">
-        <img src="${esc(bundledAssetHref(`assets/${g.id}.svg`))}" alt="${g.id}"
+        <img src="${esc(gameLogoSrc(g))}" alt="${g.id}"
              class="game-logo"
              style="width:${logoW}px;height:${logoH}px;object-fit:contain;display:block;"
              draggable="false">
@@ -1195,7 +1220,7 @@ function buildImportOverlay() {
       </div>
       <div class="dz-title">Drop macro file here</div>
       <div class="dz-sub">or click to browse</div>
-      <div class="dz-formats">.MAC &nbsp;·&nbsp; .LUA &nbsp;·&nbsp; .JSON &nbsp;·&nbsp; .AHK</div>
+      <div class="dz-formats">.AMC &nbsp;·&nbsp; .MAC &nbsp;·&nbsp; .LUA &nbsp;·&nbsp; .JSON</div>
     </div>
     ` : `
     <div class="import-row">
@@ -1214,7 +1239,7 @@ function buildImportOverlay() {
           <div class="ac-label">GAME</div>
           <div class="ac-value">
             <span style="display:inline-flex;align-items:center;gap:6px">
-              <img src="${esc(bundledAssetHref(`assets/${importGame.id}.svg`))}"
+              <img src="${esc(gameLogoSrc(importGame))}"
                    style="width:${logoW}px;height:${logoH}px;object-fit:contain;filter:brightness(0) invert(1) opacity(1);"
                    draggable="false">
               ${esc(importGame.code)}
@@ -1236,7 +1261,7 @@ function buildImportOverlay() {
     <div class="kc-actions">
       <button class="btn btn-ghost" data-action="close-overlay">Cancel</button>
       <button class="btn btn-primary" id="btn-import-confirm" data-action="confirm-import"
-              ${(!file || !state.importPendingJson || prog < 100) ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
+              ${(!file || !state.importPending || prog < 100) ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
         ${IC.check} Import &amp; Assign
       </button>
     </div>
@@ -1390,7 +1415,7 @@ function closeOverlay() {
   state.capturedKey = null;
   state.importFile = null;
   state.importProgress = 0;
-  state.importPendingJson = null;
+  state.importPending = null;
   render();
 }
 
@@ -1399,15 +1424,80 @@ function triggerMacroFilePick() {
   if (el) el.click();
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function bytesToStringForPreview(buf) {
+  const u8 = new Uint8Array(buf);
+  if (u8.length >= 3 && u8[0] === 0xef && u8[1] === 0xbb && u8[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(u8.subarray(3));
+  }
+  if (u8.length >= 2 && u8[0] === 0xff && u8[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(u8.subarray(2));
+  }
+  if (u8.length >= 2 && u8[0] === 0xfe && u8[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(u8.subarray(2));
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(u8);
+}
+
+function countMacroStepsPreview(buf, fileName) {
+  const text = bytesToStringForPreview(buf).trimStart();
+  if (text.startsWith('{')) {
+    try {
+      const o = JSON.parse(text);
+      return Array.isArray(o.steps) ? o.steps.length : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+  if (/\.amc$/i.test(fileName || '')) {
+    return text.split(/\r?\n/).filter((l) => {
+      const s = l.trim();
+      return s && !s.startsWith('#') && !s.startsWith('//');
+    }).length;
+  }
+  return text.split(/\r?\n/).filter((l) => l.trim()).length;
+}
+
 function onMacroFileChosen(file) {
   if (!file) return;
+  const name = file.name || '';
+  const isAmc = /\.amc$/i.test(name);
+
+  if (isAmc) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const buf = reader.result;
+      const b64 = arrayBufferToBase64(buf);
+      const events = countMacroStepsPreview(buf, name);
+      state.importPending = { kind: 'amc', base64: b64 };
+      state.importFile = { name, size: `${(file.size / 1024).toFixed(1)} KB`, events };
+      state.importProgress = 100;
+      render();
+    };
+    reader.readAsArrayBuffer(file);
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = () => {
     const text = reader.result;
-    state.importPendingJson = text;
+    state.importPending = { kind: 'json', text };
     let events = 0;
-    try { events = (JSON.parse(text).steps || []).length; } catch (_) { events = 0; }
-    state.importFile = { name: file.name, size: `${(file.size / 1024).toFixed(1)} KB`, events };
+    try {
+      events = (JSON.parse(text).steps || []).length;
+    } catch (_) {
+      events = 0;
+    }
+    state.importFile = { name, size: `${(file.size / 1024).toFixed(1)} KB`, events };
     state.importProgress = 100;
     render();
   };
@@ -1469,7 +1559,7 @@ document.addEventListener('click', (e) => {
 
     case 'open-import': {
       const g = state.gameId;
-      setState({ overlay: 'import', importFile: null, importProgress: 0, importPendingJson: null, importGame: g, importWeaponId: state.selected[g] });
+      setState({ overlay: 'import', importFile: null, importProgress: 0, importPending: null, importGame: g, importWeaponId: state.selected[g] });
       break;
     }
 
@@ -1544,21 +1634,31 @@ document.addEventListener('click', (e) => {
     }
 
     case 'confirm-import': {
-      if (!state.importFile || state.importProgress < 100 || !state.importPendingJson) break;
+      if (!state.importFile || state.importProgress < 100 || !state.importPending) break;
       const g = state.importGame;
       const wid = state.importWeaponId;
       const fname = state.importFile.name;
+      const pend = state.importPending;
       (async () => {
         try {
-          const res = await tauriInvoke('import_macro_json', {
-            json: state.importPendingJson,
-            assign: { gameId: g, weaponId: wid },
-          });
+          let res;
+          if (pend.kind === 'json') {
+            res = await tauriInvoke('import_macro_json', {
+              json: pend.text,
+              assign: { gameId: g, weaponId: wid },
+            });
+          } else {
+            res = await tauriInvoke('import_macro_amc', {
+              contentBase64: pend.base64,
+              fileName: fname,
+              assign: { gameId: g, weaponId: wid },
+            });
+          }
           applyLoadResponse(res);
           state.overlay = null;
           state.importFile = null;
           state.importProgress = 0;
-          state.importPendingJson = null;
+          state.importPending = null;
           render();
           showToast(`Imported ${fname}`);
         } catch (err) {
@@ -1609,7 +1709,14 @@ document.addEventListener('drop', (e) => {
 /* ============================================================
    INIT
    ============================================================ */
-loadConfig();
+function boot() {
+  loadConfig();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(boot));
+} else {
+  requestAnimationFrame(boot);
+}
 </script>
 </body>
 </html>

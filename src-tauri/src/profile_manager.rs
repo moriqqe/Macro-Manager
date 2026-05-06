@@ -3,7 +3,7 @@ use crate::types::{
 };
 
 /// Syncs `icon_url` from the built-in defaults for each weapon (by game + id).
-/// Returns `true` if any value changed (e.g. old HTTPS URLs → bundled `assets/weapons/...`).
+/// Returns `true` if any value changed (e.g. old `assets/` paths → embedded `data:` URLs).
 pub fn apply_default_weapon_icons(cfg: &mut AppConfig) -> bool {
     let default = default_config();
     let mut changed = false;
@@ -20,7 +20,11 @@ pub fn apply_default_weapon_icons(cfg: &mut AppConfig) -> bool {
             };
             let replace = match &w.icon_url {
                 None => true,
-                Some(s) => s.starts_with("http://") || s.starts_with("https://"),
+                Some(s) => {
+                    s.starts_with("http://")
+                        || s.starts_with("https://")
+                        || s.starts_with("assets/")
+                }
             };
             if replace && w.icon_url.as_ref() != Some(bundled) {
                 w.icon_url = Some(bundled.clone());
@@ -76,11 +80,14 @@ fn bind(
     }
 }
 
+fn wicon(game: &str, weapon_id: &str) -> Option<String> {
+    crate::embedded_weapon_icons::weapon_icon_data_url(game, weapon_id).map(str::to_string)
+}
+
 fn game_pubg() -> GameProfile {
-    // Bundled icons (sources: pubg.wiki.gg UI weapon icons)
     let weapons = vec![
-        tpl_icon("m416", "M416", "AR", "5.56", 720, 0.62, Some("assets/weapons/pubg/m416.png")),
-        tpl_icon("akm", "AKM", "AR", "7.62", 600, 0.78, Some("assets/weapons/pubg/akm.png")),
+        tpl_icon("m416", "M416", "AR", "5.56", 720, 0.62, wicon("pubg", "m416")),
+        tpl_icon("akm", "AKM", "AR", "7.62", 600, 0.78, wicon("pubg", "akm")),
         tpl_icon(
             "scarl",
             "SCAR-L",
@@ -88,7 +95,7 @@ fn game_pubg() -> GameProfile {
             "5.56",
             625,
             0.55,
-            Some("assets/weapons/pubg/scarl.png"),
+            wicon("pubg", "scarl"),
         ),
         tpl_icon(
             "beryl",
@@ -97,16 +104,7 @@ fn game_pubg() -> GameProfile {
             "7.62",
             700,
             0.85,
-            Some("assets/weapons/pubg/beryl.png"),
-        ),
-        tpl_icon(
-            "ump45",
-            "UMP45",
-            "SMG",
-            ".45",
-            670,
-            0.41,
-            Some("assets/weapons/pubg/ump45.png"),
+            wicon("pubg", "beryl"),
         ),
         tpl_icon(
             "vector",
@@ -115,7 +113,7 @@ fn game_pubg() -> GameProfile {
             ".45",
             1100,
             0.38,
-            Some("assets/weapons/pubg/vector.png"),
+            wicon("pubg", "vector"),
         ),
         tpl_icon(
             "mini14",
@@ -124,16 +122,7 @@ fn game_pubg() -> GameProfile {
             "5.56",
             250,
             0.28,
-            Some("assets/weapons/pubg/mini14.png"),
-        ),
-        tpl_icon(
-            "kar98",
-            "Kar98K",
-            "SR",
-            "7.62",
-            40,
-            0.22,
-            Some("assets/weapons/pubg/kar98.png"),
+            wicon("pubg", "mini14"),
         ),
     ];
     let bindings = vec![
@@ -159,16 +148,8 @@ fn game_pubg() -> GameProfile {
             true,
         ), // F
         bind("beryl", None, None, ExecutionMode::Hold, false),
-        bind(
-            "ump45",
-            Some("sample-recoil"),
-            Some((0, 0x47)),
-            ExecutionMode::Tap,
-            true,
-        ),
         bind("vector", None, None, ExecutionMode::Hold, false),
         bind("mini14", None, None, ExecutionMode::Tap, false),
-        bind("kar98", None, None, ExecutionMode::Tap, false),
     ];
     GameProfile {
         id: "pubg".into(),
@@ -181,7 +162,6 @@ fn game_pubg() -> GameProfile {
 }
 
 fn game_rust() -> GameProfile {
-    // Bundled icons (sources: RustLabs items180)
     let weapons = vec![
         tpl_icon(
             "ak47",
@@ -190,7 +170,7 @@ fn game_rust() -> GameProfile {
             "5.56",
             600,
             0.82,
-            Some("assets/weapons/rust/ak47.png"),
+            wicon("rust", "ak47"),
         ),
         tpl_icon(
             "lr300",
@@ -199,7 +179,7 @@ fn game_rust() -> GameProfile {
             "5.56",
             600,
             0.58,
-            Some("assets/weapons/rust/lr300.png"),
+            wicon("rust", "lr300"),
         ),
         tpl_icon(
             "mp5a4",
@@ -208,7 +188,7 @@ fn game_rust() -> GameProfile {
             "9mm",
             800,
             0.44,
-            Some("assets/weapons/rust/mp5a4.png"),
+            wicon("rust", "mp5a4"),
         ),
         tpl_icon(
             "thompson",
@@ -217,7 +197,7 @@ fn game_rust() -> GameProfile {
             ".45",
             600,
             0.52,
-            Some("assets/weapons/rust/thompson.png"),
+            wicon("rust", "thompson"),
         ),
         tpl_icon(
             "custom",
@@ -226,7 +206,7 @@ fn game_rust() -> GameProfile {
             "9mm",
             750,
             0.48,
-            Some("assets/weapons/rust/custom.png"),
+            wicon("rust", "custom"),
         ),
         tpl_icon(
             "m249",
@@ -235,7 +215,7 @@ fn game_rust() -> GameProfile {
             "5.56",
             700,
             0.88,
-            Some("assets/weapons/rust/m249.png"),
+            wicon("rust", "m249"),
         ),
     ];
     let bindings = vec![
@@ -283,7 +263,7 @@ fn game_cs2() -> GameProfile {
             "7.62",
             600,
             0.74,
-            Some("assets/weapons/cs2/ak47cs.svg"),
+            wicon("cs2", "ak47cs"),
         ),
         tpl_icon(
             "m4a4",
@@ -292,7 +272,7 @@ fn game_cs2() -> GameProfile {
             "5.56",
             666,
             0.51,
-            Some("assets/weapons/cs2/m4a4.svg"),
+            wicon("cs2", "m4a4"),
         ),
         tpl_icon(
             "m4a1s",
@@ -301,7 +281,7 @@ fn game_cs2() -> GameProfile {
             "5.56",
             600,
             0.42,
-            Some("assets/weapons/cs2/m4a1s.svg"),
+            wicon("cs2", "m4a1s"),
         ),
         tpl_icon(
             "famas",
@@ -310,7 +290,7 @@ fn game_cs2() -> GameProfile {
             "5.56",
             666,
             0.46,
-            Some("assets/weapons/cs2/famas.svg"),
+            wicon("cs2", "famas"),
         ),
         tpl_icon(
             "galil",
@@ -319,7 +299,7 @@ fn game_cs2() -> GameProfile {
             "5.56",
             666,
             0.61,
-            Some("assets/weapons/cs2/galil.svg"),
+            wicon("cs2", "galil"),
         ),
         tpl_icon(
             "mp9",
@@ -328,25 +308,7 @@ fn game_cs2() -> GameProfile {
             "9mm",
             857,
             0.32,
-            Some("assets/weapons/cs2/mp9.svg"),
-        ),
-        tpl_icon(
-            "ump45cs",
-            "UMP-45",
-            "SMG",
-            ".45",
-            666,
-            0.36,
-            Some("assets/weapons/cs2/ump45cs.svg"),
-        ),
-        tpl_icon(
-            "awp",
-            "AWP",
-            "Sniper",
-            ".338",
-            41,
-            0.20,
-            Some("assets/weapons/cs2/awp.svg"),
+            wicon("cs2", "mp9"),
         ),
     ];
     let bindings = vec![
@@ -380,8 +342,6 @@ fn game_cs2() -> GameProfile {
             ExecutionMode::Tap,
             true,
         ),
-        bind("ump45cs", None, None, ExecutionMode::Hold, false),
-        bind("awp", None, None, ExecutionMode::Tap, false),
     ];
     GameProfile {
         id: "cs2".into(),
@@ -404,7 +364,7 @@ fn tpl_icon(
     caliber: &str,
     rpm: u32,
     recoil: f32,
-    icon_url: Option<&str>,
+    icon_url: Option<String>,
 ) -> WeaponTemplate {
     WeaponTemplate {
         id: id.into(),
@@ -413,6 +373,6 @@ fn tpl_icon(
         caliber: caliber.into(),
         rpm: Some(rpm),
         recoil: Some(recoil),
-        icon_url: icon_url.map(String::from),
+        icon_url,
     }
 }

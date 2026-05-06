@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use serde::Deserialize;
 use tauri::State;
 
@@ -150,6 +152,8 @@ fn build_ui(cfg: &AppConfig) -> UiConfig {
                 name: gp.display_name.clone(),
                 sub: gp.subtitle.clone(),
                 profile: gp.profile_label.clone(),
+                logo_url: crate::embedded_weapon_icons::game_logo_data_url(&gp.id)
+                    .map(|s| s.to_string()),
                 weapons,
             }
         })
@@ -191,14 +195,11 @@ pub struct AssignMacroPayload {
     pub weapon_id: String,
 }
 
-#[tauri::command(rename_all = "camelCase")]
-pub fn import_macro_json(
-    state: State<AppState>,
-    json: String,
+fn apply_imported_macro(
+    state: &State<AppState>,
+    imported: MacroDefinition,
     assign: Option<AssignMacroPayload>,
 ) -> Result<LoadResponse, String> {
-    let imported: MacroDefinition =
-        serde_json::from_str(&json).map_err(|e| format!("invalid macro json: {e}"))?;
     if imported.id.is_empty() {
         return Err("macro id required".into());
     }
@@ -234,6 +235,31 @@ pub fn import_macro_json(
         ui: build_ui(&cfg),
         config: cfg.clone(),
     })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn import_macro_json(
+    state: State<AppState>,
+    json: String,
+    assign: Option<AssignMacroPayload>,
+) -> Result<LoadResponse, String> {
+    let imported: MacroDefinition =
+        serde_json::from_str(&json).map_err(|e| format!("invalid macro json: {e}"))?;
+    apply_imported_macro(&state, imported, assign)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn import_macro_amc(
+    state: State<AppState>,
+    content_base64: String,
+    file_name: String,
+    assign: Option<AssignMacroPayload>,
+) -> Result<LoadResponse, String> {
+    let bytes = STANDARD
+        .decode(content_base64.trim())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    let imported = crate::amc_import::parse_amc_bytes(&bytes, &file_name)?;
+    apply_imported_macro(&state, imported, assign)
 }
 
 #[tauri::command(rename_all = "camelCase")]

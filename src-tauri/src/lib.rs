@@ -1,5 +1,7 @@
+mod amc_import;
 mod commands;
 mod config_manager;
+mod embedded_weapon_icons;
 mod executor;
 mod hotkey_util;
 mod input_listener;
@@ -25,6 +27,7 @@ pub fn run() {
             commands::load_config,
             commands::save_config,
             commands::import_macro_json,
+            commands::import_macro_amc,
             commands::set_weapon_hotkey,
             commands::clear_weapon_hotkey,
             commands::set_weapon_mode,

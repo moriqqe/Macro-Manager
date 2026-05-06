@@ -134,6 +134,8 @@ pub struct UiGame {
     pub name: String,
     pub sub: String,
     pub profile: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
     pub weapons: Vec<UiWeapon>,
 }
 
