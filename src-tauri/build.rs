@@ -69,6 +69,8 @@ fn main() {
     code.push_str("        _ => None,\n    }\n}\n");
 
     fs::write(&out_path, code).unwrap();
+
+    tauri_build::build();
 }
 
 fn embed_match_arm(code: &mut String, game: &str, wid: &str, rel: &str, root: &Path) {

@@ -68,6 +68,8 @@ pub struct GameProfile {
 pub enum MacroStep {
     MouseDown { button: String },
     MouseUp { button: String },
+    /// Relative mouse movement (same units as Win32 `SendInput` / `MOUSEEVENTF_MOVE`).
+    MouseMoveRel { dx: i32, dy: i32 },
     KeyDown { vk: u32 },
     KeyUp { vk: u32 },
     Delay { ms: u64 },
@@ -96,6 +98,9 @@ pub struct AppConfig {
     pub master_enabled: bool,
     #[serde(default = "default_game")]
     pub active_game: String,
+    /// VK for primary fire (default LMB `0x01`). Macro Hold/Toggle/Tap applies to this button only.
+    #[serde(default = "default_fire_button_vk")]
+    pub fire_button_vk: u32,
     #[serde(default)]
     pub jitter_ms: Option<(u64, u64)>,
     #[serde(default)]
@@ -116,11 +121,19 @@ fn default_game() -> String {
     "pubg".to_string()
 }
 
+fn default_fire_button_vk() -> u32 {
+    0x01
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UiConfig {
     pub master_enabled: bool,
     pub active_game: String,
+    pub fire_button_vk: u32,
+    pub fire_button_label: String,
+    #[serde(default)]
+    pub armed_weapon_id: Option<String>,
     pub jitter_ms: Option<(u64, u64)>,
     pub games: Vec<UiGame>,
     pub macros: Vec<MacroDefinition>,
@@ -151,6 +164,9 @@ pub struct UiWeapon {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recoil: Option<f32>,
     pub bound: bool,
+    /// Selected weapon profile for the active game (macro runs on primary fire while set).
+    #[serde(default)]
+    pub armed: bool,
     pub hotkey: String,
     pub mode: ExecutionMode,
     #[serde(skip_serializing_if = "Option::is_none")]

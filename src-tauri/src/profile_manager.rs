@@ -89,6 +89,7 @@ pub fn default_config() -> AppConfig {
         schema_version: 1,
         master_enabled: true,
         active_game: "pubg".into(),
+        fire_button_vk: 0x01,
         jitter_ms: Some((0, 3)),
         macros: vec![sample_macro],
         game_profiles: vec![game_pubg(), game_rust(), game_cs2()],

@@ -11,6 +11,10 @@ src-tauri/target/
 # Tauri codegen & tooling
 src-tauri/gen/
 
+# Copied from repo root by scripts/sync-web-root.cjs (symlinks break on Windows clones)
+web-root/index.html
+web-root/assets/
+
 # Bundler output (if you add Vite/webpack later)
 dist/
 dist-ssr/

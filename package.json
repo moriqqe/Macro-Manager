@@ -1,9 +1,10 @@
 {
   "name": "macro-manager",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-0",
   "private": true,
   "scripts": {
     "tauri": "tauri",
+    "sync-web-root": "node scripts/sync-web-root.cjs",
     "dev": "tauri dev",
     "build": "node scripts/ensure-release-windows.cjs && tauri build"
   },

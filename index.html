@@ -281,7 +281,8 @@ html.tauri-macos .titlebar {
 }
 .weapon-card .wc-meta .wc-class { background: var(--bg-1); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line-1); }
 .weapon-card .wc-bound { font-family: var(--mono); font-size: 9px; color: var(--fg-3); letter-spacing: 0.08em; }
-.weapon-card.bound .wc-bound { color: var(--accent); }
+.weapon-card.wp-armed { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(229,72,77,0.22); }
+.weapon-card.selected.wp-armed { box-shadow: 0 0 0 1px rgba(229,72,77,0.35); }
 .detail {
   border-top: 1px solid var(--line-1);
   background: var(--bg-2);
@@ -743,6 +744,8 @@ const state = {
   importPending: null,
   toast: null,
   tweaksOpen: false,
+  fireButtonVk: 0x01,
+  fireButtonLabel: 'LMB',
 };
 
 function applyLoadResponse(res) {
@@ -771,6 +774,7 @@ function applyLoadResponse(res) {
       macroId: w.macroId,
       macroPreview: w.macroPreview,
       iconUrl: w.iconUrl,
+      armed: !!w.armed,
     }));
     if (!state.selected[g.id] && g.weapons && g.weapons[0]) {
       state.selected[g.id] = g.weapons[0].id;
@@ -778,6 +782,8 @@ function applyLoadResponse(res) {
   }
   state.gameId = res.ui.activeGame || 'pubg';
   state.masterOn = !!res.ui.masterEnabled;
+  state.fireButtonVk = Number(res.ui.fireButtonVk != null ? res.ui.fireButtonVk : 1);
+  state.fireButtonLabel = res.ui.fireButtonLabel || 'LMB';
 }
 
 function gamesForRail() {
@@ -989,7 +995,7 @@ function buildMasterRow(game, weaponCount, boundCount) {
   <div class="mr-info">
     <div class="mr-label">ACTIVE PROFILE</div>
     <div class="mr-value">${esc(game.name)}</div>
-    <div class="mr-meta">${boundCount}/${weaponCount} weapons bound · ${esc(game.profile)}</div>
+    <div class="mr-meta">${boundCount}/${weaponCount} profile keys · primary fire: ${esc(state.fireButtonLabel)}</div>
   </div>
   <button class="toggle${state.masterOn ? ' on' : ''}" data-action="toggle-master" aria-label="Master macro toggle"></button>
 </div>`;
@@ -1008,7 +1014,7 @@ function buildWeaponGrid(weapons, selectedId) {
   ${weapons.map(w => {
     const sel = selectedId === w.id;
     return `
-    <button class="weapon-card${sel ? ' selected' : ''}${w.bound ? ' bound' : ''}"
+    <button class="weapon-card${sel ? ' selected' : ''}${w.bound ? ' bound' : ''}${w.armed ? ' wp-armed' : ''}"
             data-action="select-weapon" data-weapon-id="${w.id}">
       <div class="wc-img">${weaponIconHtml(w, false, sel)}</div>
       <div class="wc-name">${esc(w.name)}</div>
@@ -1016,7 +1022,7 @@ function buildWeaponGrid(weapons, selectedId) {
         <span class="wc-class">${esc(w.class)}</span>
         <span>${esc(w.caliber)}</span>
       </div>
-      <div class="wc-bound">${w.bound ? `&#9673; ${esc(w.hotkey)}` : '&#9675; UNBOUND'}</div>
+      <div class="wc-bound">${w.bound ? `&#9673; ${esc(w.hotkey)}` : '&#9675; UNBOUND'}${w.armed ? ' &middot; PROFILE' : ''}</div>
     </button>`;
   }).join('')}
 </div>`;
@@ -1041,20 +1047,27 @@ function buildDetail(weapon, macroTab, macroTabs) {
 
   <div class="config-grid">
     <button class="hotkey-btn" data-action="open-record">
-      <span class="hb-label">HOTKEY</span>
+      <span class="hb-label">PROFILE KEY</span>
       <span class="hb-key">${esc(weapon.hotkey)}</span>
     </button>
     <div class="config-cell">
-      <div class="cc-label">STATUS</div>
-      <div class="cc-value" style="color:${weapon.bound ? 'var(--ok)' : 'var(--fg-2)'}">
-        ${weapon.bound ? '&#9679; ARMED' : '&#9675; IDLE'}
+      <div class="cc-label">PROFILE ACTIVE</div>
+      <div class="cc-value" style="color:${weapon.armed ? 'var(--accent)' : 'var(--fg-2)'}">
+        ${weapon.armed ? '&#9679; YES (macro uses primary fire)' : '&#9675; Press profile key'}
       </div>
+    </div>
+  </div>
+  <div class="config-grid" style="margin-top:10px">
+    <div class="config-cell" style="grid-column:1/-1">
+      <div class="cc-label">PRIMARY FIRE (GLOBAL)</div>
+      <div class="cc-value">${esc(state.fireButtonLabel)} · change in Settings panel</div>
     </div>
   </div>
 
   <div>
     <div class="section-head" style="padding:0 0 6px">
-      <span>Trigger Mode</span>
+      <span>Trigger mode</span>
+      <span class="sh-count" style="font-weight:400;color:var(--fg-3)">hold/toggle/tap on primary fire</span>
     </div>
     <div class="mode-seg">
       ${['hold','toggle','tap'].map(m => `
@@ -1167,17 +1180,17 @@ function buildHotkeyOverlay(weapon) {
 <div class="overlay-bg" data-overlay-bg>
   <div class="modal">
     <div class="modal-head">
-      <div class="modal-title">// REC · ${esc(weapon?.name || 'WEAPON')}</div>
+      <div class="modal-title">// PROFILE · ${esc(weapon?.name || 'WEAPON')}</div>
       <button class="modal-close" data-action="close-overlay">${IC.x}</button>
     </div>
     <div class="kc-face">
       <div class="kc-prompt">
         <span class="kc-rec-dot"></span>
-        ${cap ? 'KEY CAPTURED' : 'PRESS ANY KEY OR MOUSE BUTTON'}
+        ${cap ? 'KEY CAPTURED' : 'PROFILE SWITCH KEY'}
       </div>
       <div class="kc-key">${cap ? esc(cap) : '_ _'}</div>
       <div class="kc-hint">
-        ${cap ? 'Confirm to bind, or press another key to overwrite.' : 'Listening&hellip; release combo to capture.'}
+        ${cap ? 'Confirm to save. Macro runs on primary fire after you select this profile.' : 'Pick a key that only selects this weapon profile (not LMB unless fire is different).'}
       </div>
     </div>
     <div class="kc-actions">
@@ -1185,7 +1198,7 @@ function buildHotkeyOverlay(weapon) {
       <button class="btn btn-ghost" data-action="close-overlay">Cancel</button>
       <button class="btn btn-primary" data-action="save-hotkey"
               ${!cap ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
-        ${IC.check} Bind Key
+        ${IC.check} Save profile key
       </button>
     </div>
   </div>
@@ -1266,7 +1279,22 @@ function buildImportOverlay() {
       </button>
     </div>
   </div>
-</div>`;
+  </div>`;
+}
+
+function fireSelectOptionsHtml() {
+  const cur = state.fireButtonVk;
+  const opts = [
+    [0x01, 'Left mouse (LMB)'],
+    [0x02, 'Right mouse (RMB)'],
+    [0x04, 'Middle (MMB)'],
+    [0x05, 'Mouse button 4'],
+    [0x06, 'Mouse button 5'],
+    [0x20, 'Space'],
+    [0x58, 'X key'],
+  ];
+  return opts.map(([vk, lab]) =>
+    `<option value="${vk}"${cur === vk ? ' selected' : ''}>${lab}</option>`).join('');
 }
 
 function buildTweaksPanel() {
@@ -1305,6 +1333,14 @@ function buildTweaksPanel() {
         ${segBtn('set-density','density','comfortable',state.density,'Comfortable')}
         ${segBtn('set-density','density','compact',state.density,'Compact')}
       </div>
+    </div>
+
+    <div>
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.12em;color:var(--fg-3);text-transform:uppercase;margin-bottom:6px;">PRIMARY FIRE</div>
+      <select data-action="set-fire-select" style="width:100%;box-sizing:border-box;background:var(--bg-1);border:1px solid var(--line-1);border-radius:5px;color:var(--fg-0);font-family:var(--mono);font-size:11px;padding:8px 10px;">
+        ${fireSelectOptionsHtml()}
+      </select>
+      <div style="font-size:10px;color:var(--fg-3);margin-top:6px;line-height:1.35;">Macros use this button (Hold/Toggle/Tap). Profile keys cannot match fire unless combined with Ctrl/Alt/Shift.</div>
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -1459,6 +1495,17 @@ function countMacroStepsPreview(buf, fileName) {
     }
   }
   if (/\.amc$/i.test(fileName || '')) {
+    if (/<syntax>/i.test(text)) {
+      const blocks = [...text.matchAll(/<Syntax>([\s\S]*?)<\/Syntax>/gi)];
+      let longest = '';
+      for (const m of blocks) {
+        const inner = (m[1] || '').trim();
+        if (inner.length > longest.length) longest = inner;
+      }
+      if (longest.length) {
+        return longest.split(/\r?\n/).filter((l) => l.trim()).length;
+      }
+    }
     return text.split(/\r?\n/).filter((l) => {
       const s = l.trim();
       return s && !s.startsWith('#') && !s.startsWith('//');
@@ -1706,16 +1753,38 @@ document.addEventListener('drop', (e) => {
   if (f) onMacroFileChosen(f);
 });
 
+document.addEventListener('change', async (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLSelectElement)) return;
+  if (t.dataset.action !== 'set-fire-select') return;
+  const vk = Number(t.value);
+  if (!Number.isFinite(vk)) return;
+  try {
+    const res = await tauriInvoke('set_fire_button', { vk });
+    applyLoadResponse(res);
+    render();
+  } catch (err) {
+    showToast(String(err));
+    render();
+  }
+});
+
 /* ============================================================
    INIT
    ============================================================ */
-function boot() {
-  loadConfig();
+async function boot() {
+  await loadConfig();
+  try {
+    const listen = window.__TAURI__?.event?.listen;
+    if (typeof listen === 'function') {
+      await listen('armed-changed', () => { loadConfig(); });
+    }
+  } catch (_) { /* browser preview */ }
 }
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(boot));
+  document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => boot()));
 } else {
-  requestAnimationFrame(boot);
+  requestAnimationFrame(() => boot());
 }
 </script>
 </body>

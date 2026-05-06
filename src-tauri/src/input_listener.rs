@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::macro_engine::MacroEngine;
 use crate::types::{AppConfig, MacroStep};
@@ -6,6 +6,7 @@ use crate::types::{AppConfig, MacroStep};
 pub struct InputRuntime {
     pub config: Arc<RwLock<AppConfig>>,
     pub engine: MacroEngine,
+    pub armed: Arc<Mutex<Option<(String, String)>>>,
 }
 
 pub fn resolve_macro(cfg: &AppConfig, macro_id: &Option<String>) -> Option<Vec<MacroStep>> {
@@ -24,10 +25,19 @@ pub fn spawn(runtime: Arc<InputRuntime>) {
 }
 
 #[cfg(windows)]
+pub fn init_app_handle(handle: tauri::AppHandle) {
+    win::init_emit(handle);
+}
+
+#[cfg(not(windows))]
+pub fn init_app_handle(_handle: tauri::AppHandle) {}
+
+#[cfg(windows)]
 mod win {
     use std::collections::HashSet;
     use std::sync::{Arc, Mutex, OnceLock};
 
+    use tauri::{AppHandle, Emitter};
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -44,6 +54,17 @@ mod win {
 
     static RT: OnceLock<Arc<InputRuntime>> = OnceLock::new();
     static PRESSED: OnceLock<Mutex<HashSet<(u32, u32)>>> = OnceLock::new();
+    static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+
+    pub fn init_emit(handle: AppHandle) {
+        let _ = APP_HANDLE.set(handle);
+    }
+
+    fn notify_armed_changed() {
+        if let Some(h) = APP_HANDLE.get() {
+            let _ = h.emit("armed-changed", true);
+        }
+    }
 
     fn pressed() -> &'static Mutex<HashSet<(u32, u32)>> {
         PRESSED.get_or_init(|| Mutex::new(HashSet::new()))
@@ -62,6 +83,7 @@ mod win {
         super::resolve_macro(cfg, macro_id)
     }
 
+    /// Profile hotkeys only arm the weapon; macro runs on `fire_button_vk` using that weapon's mode.
     fn dispatch(rt: &InputRuntime, vk: u32, down: bool, up: bool) {
         let mods = hotkey_util::async_modifiers();
         let key = (vk, mods);
@@ -88,49 +110,85 @@ mod win {
         if !cfg.master_enabled {
             return;
         }
-        let game = match cfg.game_profiles.iter().find(|p| p.id == cfg.active_game) {
-            Some(g) => g,
-            None => return,
+
+        // ── Profile selection (keydown): bind key switches armed weapon only ──
+        if down {
+            if let Some(game) = cfg.game_profiles.iter().find(|p| p.id == cfg.active_game) {
+                for b in &game.bindings {
+                    if !b.enabled {
+                        continue;
+                    }
+                    let Some(hk) = &b.hotkey else {
+                        continue;
+                    };
+                    if hk.vk != vk || hk.modifiers != mods {
+                        continue;
+                    }
+                    rt.engine.interrupt();
+                    if let Ok(mut arm) = rt.armed.lock() {
+                        *arm = Some((game.id.clone(), b.weapon_id.clone()));
+                    }
+                    notify_armed_changed();
+                    return;
+                }
+            }
+        }
+
+        // ── Primary fire: vk-only (modifiers ignored so Shift+fire still runs macro) ──
+        if vk != cfg.fire_button_vk {
+            return;
+        }
+
+        let armed_weapon = rt
+            .armed
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+
+        let Some((gid, wid)) = armed_weapon else {
+            return;
+        };
+        if gid != cfg.active_game {
+            return;
+        }
+
+        let Some(game) = cfg.game_profiles.iter().find(|p| p.id == gid) else {
+            return;
+        };
+        let Some(binding) = game
+            .bindings
+            .iter()
+            .find(|b| b.weapon_id == wid && b.enabled)
+        else {
+            return;
+        };
+        let Some(steps) = resolve_steps(&cfg, &binding.macro_id) else {
+            return;
         };
 
-        let mods = hotkey_util::async_modifiers();
-
-        for b in &game.bindings {
-            if !b.enabled {
-                continue;
-            }
-            let Some(hk) = &b.hotkey else { continue };
-            if hk.vk != vk || hk.modifiers != mods {
-                continue;
-            }
-            let Some(steps) = resolve_steps(&cfg, &b.macro_id) else {
-                continue;
-            };
-            let jitter = cfg.jitter_ms;
-            match b.mode {
-                ExecutionMode::Tap => {
-                    if down {
-                        rt.engine.spawn_run(steps, RunMode::Once, jitter);
-                    }
+        let jitter = cfg.jitter_ms;
+        match binding.mode {
+            ExecutionMode::Tap => {
+                if down {
+                    rt.engine.spawn_run(steps, RunMode::Once, jitter);
                 }
-                ExecutionMode::Toggle => {
-                    if down {
-                        if rt.engine.is_running() {
-                            rt.engine.interrupt();
-                        } else {
-                            rt.engine.spawn_run(steps, RunMode::LoopUntilCancel, jitter);
-                        }
-                    }
-                }
-                ExecutionMode::Hold => {
-                    if down {
-                        rt.engine.spawn_run(steps, RunMode::LoopUntilCancel, jitter);
-                    } else if up {
+            }
+            ExecutionMode::Toggle => {
+                if down {
+                    if rt.engine.is_running() {
                         rt.engine.interrupt();
+                    } else {
+                        rt.engine.spawn_run(steps, RunMode::LoopUntilCancel, jitter);
                     }
                 }
             }
-            break;
+            ExecutionMode::Hold => {
+                if down {
+                    rt.engine.spawn_run(steps, RunMode::LoopUntilCancel, jitter);
+                } else if up {
+                    rt.engine.interrupt();
+                }
+            }
         }
     }
 

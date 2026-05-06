@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -9,13 +9,14 @@ use tauri::State;
 use crate::config_manager;
 use crate::hotkey_util;
 use crate::types::{
-    AppConfig, ExecutionMode, LoadResponse, MacroDefinition, MacroStep, UiConfig, UiGame,
+    AppConfig, ExecutionMode, HotkeySpec, LoadResponse, MacroDefinition, MacroStep, UiConfig, UiGame,
     UiMacroStep, UiWeapon,
 };
 
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
     pub engine: crate::macro_engine::MacroEngine,
+    pub armed: Arc<Mutex<Option<(String, String)>>>,
 }
 
 impl AppState {
@@ -23,7 +24,18 @@ impl AppState {
         Self {
             config: Arc::new(RwLock::new(cfg)),
             engine: crate::macro_engine::MacroEngine::new(),
+            armed: Arc::new(Mutex::new(None)),
         }
+    }
+}
+
+fn armed_weapon_for_active(cfg: &AppConfig, armed: &Mutex<Option<(String, String)>>) -> Option<String> {
+    let lock = armed.lock().ok()?;
+    let (ref gid, ref wid) = lock.as_ref()?;
+    if gid == &cfg.active_game {
+        Some(wid.clone())
+    } else {
+        None
     }
 }
 
@@ -40,6 +52,25 @@ fn validate_config(cfg: &AppConfig) -> Result<(), String> {
                 return Err(format!(
                     "Duplicate hotkey ({}, {}) for game {}",
                     h.modifiers, h.vk, gp.id
+                ));
+            }
+        }
+    }
+    let fb = HotkeySpec {
+        modifiers: 0,
+        vk: cfg.fire_button_vk,
+    };
+    let fire_label = hotkey_util::format_hotkey(&fb);
+    for gp in &cfg.game_profiles {
+        for b in &gp.bindings {
+            if !b.enabled {
+                continue;
+            }
+            let Some(h) = &b.hotkey else { continue };
+            if h.modifiers == 0 && h.vk == cfg.fire_button_vk {
+                return Err(format!(
+                    "Weapon `{}` profile hotkey matches primary fire ({}). Hold CTRL/ALT/SHIFT with the profile key, or pick another primary fire button.",
+                    b.weapon_id, fire_label
                 ));
             }
         }
@@ -86,6 +117,14 @@ fn macro_preview(m: &MacroDefinition) -> Vec<UiMacroStep> {
                     value: button.to_uppercase(),
                 });
             }
+            MacroStep::MouseMoveRel { dx, dy } => {
+                out.push(UiMacroStep {
+                    t,
+                    kind: "mouse".into(),
+                    action: "MOVE".into(),
+                    value: format!("{dx},{dy}"),
+                });
+            }
             MacroStep::KeyDown { vk } => {
                 out.push(UiMacroStep {
                     t,
@@ -107,7 +146,12 @@ fn macro_preview(m: &MacroDefinition) -> Vec<UiMacroStep> {
     out
 }
 
-fn build_ui(cfg: &AppConfig) -> UiConfig {
+fn build_ui(cfg: &AppConfig, armed: &Mutex<Option<(String, String)>>) -> UiConfig {
+    let armed_wid = armed_weapon_for_active(cfg, armed);
+    let fire_label = hotkey_util::format_hotkey(&HotkeySpec {
+        modifiers: 0,
+        vk: cfg.fire_button_vk,
+    });
     let games: Vec<UiGame> = cfg
         .game_profiles
         .iter()
@@ -124,6 +168,8 @@ fn build_ui(cfg: &AppConfig) -> UiConfig {
                     let bound = binding
                         .map(|b| b.enabled && b.hotkey.is_some())
                         .unwrap_or(false);
+                    let is_armed =
+                        armed_wid.as_ref().map(|aw| aw == &w.id).unwrap_or(false);
                     let mode = binding.map(|b| b.mode).unwrap_or_default();
                     let macro_id = binding.and_then(|b| b.macro_id.clone());
                     let preview = macro_id
@@ -138,6 +184,7 @@ fn build_ui(cfg: &AppConfig) -> UiConfig {
                         rpm: w.rpm,
                         recoil: w.recoil,
                         bound,
+                        armed: is_armed,
                         hotkey: hotkey_str,
                         mode,
                         macro_id,
@@ -162,6 +209,9 @@ fn build_ui(cfg: &AppConfig) -> UiConfig {
     UiConfig {
         master_enabled: cfg.master_enabled,
         active_game: cfg.active_game.clone(),
+        fire_button_vk: cfg.fire_button_vk,
+        fire_button_label: fire_label,
+        armed_weapon_id: armed_wid,
         jitter_ms: cfg.jitter_ms,
         games,
         macros: cfg.macros.clone(),
@@ -172,7 +222,7 @@ fn build_ui(cfg: &AppConfig) -> UiConfig {
 pub fn load_config(state: State<AppState>) -> Result<LoadResponse, String> {
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -232,7 +282,7 @@ fn apply_imported_macro(
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -289,7 +339,7 @@ pub fn set_weapon_hotkey(
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -316,10 +366,17 @@ pub fn clear_weapon_hotkey(
         binding.enabled = false;
         validate_config(&w)?;
     }
+    if let Ok(mut a) = state.armed.lock() {
+        if let Some((_, wid)) = a.as_ref() {
+            if wid == &weapon_id {
+                *a = None;
+            }
+        }
+    }
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -349,7 +406,7 @@ pub fn set_weapon_mode(
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -364,10 +421,38 @@ pub fn set_active_game(state: State<AppState>, game_id: String) -> Result<LoadRe
         w.active_game = game_id;
         validate_config(&w)?;
     }
+    if let Ok(mut a) = state.armed.lock() {
+        *a = None;
+    }
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
+        config: cfg.clone(),
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn set_fire_button(state: State<AppState>, vk: u32) -> Result<LoadResponse, String> {
+    let allowed: &[u32] = &[
+        0x01, 0x02, 0x04, 0x05, 0x06, // mouse
+        0x20, // space
+        0x58, // X (some titles)
+    ];
+    if !allowed.contains(&vk) {
+        return Err(
+            "Unsupported primary fire key. Use LMB, RMB, MMB, Mouse 4/5, SPACE, or X.".into(),
+        );
+    }
+    {
+        let mut w = state.config.write().map_err(|e| e.to_string())?;
+        w.fire_button_vk = vk;
+        validate_config(&w)?;
+    }
+    let cfg = state.config.read().map_err(|e| e.to_string())?;
+    config_manager::save(&cfg).map_err(|e| e.to_string())?;
+    Ok(LoadResponse {
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }
@@ -379,10 +464,13 @@ pub fn set_master_enabled(state: State<AppState>, on: bool) -> Result<LoadRespon
         w.master_enabled = on;
         validate_config(&w)?;
     }
+    if !on {
+        state.engine.interrupt();
+    }
     let cfg = state.config.read().map_err(|e| e.to_string())?;
     config_manager::save(&cfg).map_err(|e| e.to_string())?;
     Ok(LoadResponse {
-        ui: build_ui(&cfg),
+        ui: build_ui(&cfg, &state.armed),
         config: cfg.clone(),
     })
 }

@@ -32,13 +32,17 @@ pub fn run() {
             commands::clear_weapon_hotkey,
             commands::set_weapon_mode,
             commands::set_active_game,
+            commands::set_fire_button,
             commands::set_master_enabled,
         ])
         .setup(|app| {
+            #[cfg(windows)]
+            input_listener::init_app_handle(app.handle().clone());
             let st = app.state::<commands::AppState>();
             let rt = Arc::new(input_listener::InputRuntime {
                 config: st.config.clone(),
                 engine: st.engine.clone(),
+                armed: st.armed.clone(),
             });
             input_listener::spawn(rt);
             Ok(())

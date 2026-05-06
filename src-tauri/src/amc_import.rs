@@ -2,9 +2,13 @@
 //!
 //! Supported:
 //! - **JSON** (same shape as `import_macro_json`): UTF-8 or UTF-16 (BOM).
+//! - **F1DN-style XML** (UTF-8 / UTF-16 BOM): `<Root><DefaultMacro><KeyDown><Syntax>…</Syntax>` with
+//!   `Delay`, `MoveR`, `LeftDown` / `LeftUp`, etc.
 //! - **Line DSL** (UTF-8 / UTF-16 BOM): one command per line, `#` / `//` comments.
 //!   - `DELAY <ms>` | `D <ms>` | `WAIT <ms>` | `SLEEP <ms>`
+//!   - `MOVER <dx> <dy>` — relative mouse move (same as `MoveR` in device exports)
 //!   - `MOUSE DOWN <L|LEFT|LMB|R|RIGHT|RMB|M|MIDDLE|MMB>` — same for `UP`
+//!   - `LEFTDOWN` / `LEFTUP`, `RIGHTDOWN` / `RIGHTUP`, `MIDDLEDOWN` / `MIDDLEUP` (F1DN-style)
 //!   - `LMB DOWN` / `LMB UP`, `RMB DOWN`, …
 //!   - Short: `LD` `LU` `RD` `RU` `MD` `MU`
 //!   - `KEY DOWN <vk>` | `KEY UP <vk>` (`0x10` or decimal); `KD` / `KU` shortcuts.
@@ -97,6 +101,23 @@ pub fn parse_amc_text(text: &str, file_name: &str) -> Result<MacroDefinition, St
         }
         return Ok(m);
     }
+    if let Some(syntax) = extract_f1dn_xml_macro_syntax(t) {
+        let steps = parse_f1dn_syntax(&syntax)?;
+        if steps.is_empty() {
+            return Err("amc xml: <Syntax> produced no steps".into());
+        }
+        let name = extract_xml_description(t)
+            .as_ref()
+            .map(|s| first_non_empty_line(s))
+            .filter(|s| !s.is_empty())
+            .unwrap_or(disp.clone());
+        return Ok(MacroDefinition {
+            id: stem_id,
+            name,
+            version: 1,
+            steps,
+        });
+    }
     let steps = parse_line_dsl(text)?;
     if steps.is_empty() {
         return Err(
@@ -111,6 +132,174 @@ pub fn parse_amc_text(text: &str, file_name: &str) -> Result<MacroDefinition, St
         version: 1,
         steps,
     })
+}
+
+fn find_ci(haystack: &str, needle: &str) -> Option<usize> {
+    let hb = haystack.as_bytes();
+    let nb = needle.as_bytes();
+    if nb.is_empty() || hb.len() < nb.len() {
+        return None;
+    }
+    for i in 0..=hb.len() - nb.len() {
+        if hb[i..i + nb.len()]
+            .iter()
+            .zip(nb.iter())
+            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+        {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn extract_syntax_inner_block(block: &str) -> Option<&str> {
+    let open = "<Syntax>";
+    let close = "</Syntax>";
+    let o = find_ci(block, open)?;
+    let inner = &block[o + open.len()..];
+    let c = find_ci(inner, close)?;
+    Some(inner[..c].trim())
+}
+
+fn extract_longest_syntax_from_keydown_blocks(xml: &str) -> Option<&str> {
+    let mut search = xml;
+    let mut best: Option<&str> = None;
+    let open_tag = "<KeyDown>";
+    let close_tag = "</KeyDown>";
+    while let Some(kd_pos) = find_ci(search, open_tag) {
+        let inner_start = kd_pos + open_tag.len();
+        let tail = &search[inner_start..];
+        let Some(close_rel) = find_ci(tail, close_tag) else {
+            break;
+        };
+        let block = &tail[..close_rel];
+        if let Some(syn) = extract_syntax_inner_block(block) {
+            let t = syn.trim();
+            if !t.is_empty() && best.map(|b| b.len() < t.len()).unwrap_or(true) {
+                best = Some(t);
+            }
+        }
+        search = &tail[close_rel + close_tag.len()..];
+    }
+    best
+}
+
+fn extract_f1dn_xml_macro_syntax(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("<syntax>")
+        || (!lower.contains("<root>") && !lower.contains("<defaultmacro>"))
+    {
+        return None;
+    }
+    let body = extract_longest_syntax_from_keydown_blocks(text)?;
+    let t = body.trim();
+    if t.is_empty() {
+        return None;
+    }
+    Some(t.to_string())
+}
+
+fn extract_xml_description(xml: &str) -> Option<String> {
+    let open_tag = "<Description>";
+    let close_tag = "</Description>";
+    let mut search = xml;
+    let mut best: Option<String> = None;
+    while let Some(p) = find_ci(search, open_tag) {
+        let inner_start = p + open_tag.len();
+        let tail = &search[inner_start..];
+        let Some(c) = find_ci(tail, close_tag) else {
+            break;
+        };
+        let inner = tail[..c].trim();
+        if !inner.is_empty() && best.as_ref().map(|b| b.len() < inner.len()).unwrap_or(true) {
+            best = Some(inner.to_string());
+        }
+        search = &tail[c + close_tag.len()..];
+    }
+    best
+}
+
+fn first_non_empty_line(s: &str) -> String {
+    s.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn parse_i32(s: &str) -> Result<i32, String> {
+    let t = s.trim();
+    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        i32::from_str_radix(hex, 16).map_err(|e| format!("{e}"))
+    } else {
+        t.parse::<i32>().map_err(|e| format!("{e}"))
+    }
+}
+
+fn parse_delay_ms_tokens(rest: &[String]) -> Result<u64, String> {
+    let ms = rest
+        .first()
+        .ok_or_else(|| "delay: missing ms".to_string())?;
+    parse_u64(ms)
+}
+
+fn parse_f1dn_syntax(text: &str) -> Result<Vec<MacroStep>, String> {
+    let mut steps = Vec::new();
+    for (lineno, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+            continue;
+        }
+        let tokens: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+        if tokens.is_empty() {
+            continue;
+        }
+        let t0 = tokens[0].to_ascii_uppercase();
+        let rest = &tokens[1..];
+
+        match t0.as_str() {
+            "DELAY" | "D" | "WAIT" | "SLEEP" => {
+                let n = parse_delay_ms_tokens(rest).map_err(|e| err_line(lineno, &e))?;
+                steps.push(MacroStep::Delay { ms: n });
+            }
+            "LEFTDOWN" => steps.push(MacroStep::MouseDown {
+                button: "left".into(),
+            }),
+            "LEFTUP" => steps.push(MacroStep::MouseUp {
+                button: "left".into(),
+            }),
+            "RIGHTDOWN" => steps.push(MacroStep::MouseDown {
+                button: "right".into(),
+            }),
+            "RIGHTUP" => steps.push(MacroStep::MouseUp {
+                button: "right".into(),
+            }),
+            "MIDDLEDOWN" => steps.push(MacroStep::MouseDown {
+                button: "middle".into(),
+            }),
+            "MIDDLEUP" => steps.push(MacroStep::MouseUp {
+                button: "middle".into(),
+            }),
+            "MOVER" => {
+                let dx = rest
+                    .first()
+                    .ok_or_else(|| err_line(lineno, "MoveR: missing dx"))?;
+                let dy = rest
+                    .get(1)
+                    .ok_or_else(|| err_line(lineno, "MoveR: missing dy"))?;
+                let dx = parse_i32(dx).map_err(|e| err_line(lineno, &e))?;
+                let dy = parse_i32(dy).map_err(|e| err_line(lineno, &e))?;
+                steps.push(MacroStep::MouseMoveRel { dx, dy });
+            }
+            _ => {
+                return Err(err_line(
+                    lineno,
+                    &format!("unknown F1DN command '{}'", tokens[0]),
+                ));
+            }
+        }
+    }
+    Ok(steps)
 }
 
 fn parse_line_dsl(text: &str) -> Result<Vec<MacroStep>, String> {
@@ -196,6 +385,35 @@ fn parse_line_dsl(text: &str) -> Result<Vec<MacroStep>, String> {
                 let vk = parse_vk(vk).map_err(|e| err_line(lineno, &e))?;
                 steps.push(MacroStep::KeyUp { vk });
             }
+            "MOVER" | "MOVEREL" => {
+                let dx = rest
+                    .first()
+                    .ok_or_else(|| err_line(lineno, "MoveR: missing dx"))?;
+                let dy = rest
+                    .get(1)
+                    .ok_or_else(|| err_line(lineno, "MoveR: missing dy"))?;
+                let dx = parse_i32(dx).map_err(|e| err_line(lineno, &e))?;
+                let dy = parse_i32(dy).map_err(|e| err_line(lineno, &e))?;
+                steps.push(MacroStep::MouseMoveRel { dx, dy });
+            }
+            "LEFTDOWN" => steps.push(MacroStep::MouseDown {
+                button: "left".into(),
+            }),
+            "LEFTUP" => steps.push(MacroStep::MouseUp {
+                button: "left".into(),
+            }),
+            "RIGHTDOWN" => steps.push(MacroStep::MouseDown {
+                button: "right".into(),
+            }),
+            "RIGHTUP" => steps.push(MacroStep::MouseUp {
+                button: "right".into(),
+            }),
+            "MIDDLEDOWN" => steps.push(MacroStep::MouseDown {
+                button: "middle".into(),
+            }),
+            "MIDDLEUP" => steps.push(MacroStep::MouseUp {
+                button: "middle".into(),
+            }),
             _ => {
                 return Err(err_line(
                     lineno,
@@ -306,6 +524,21 @@ mod tests {
         let m = parse_amc_text(text, "test.amc").unwrap();
         assert_eq!(m.id, "test");
         assert_eq!(m.steps.len(), 4);
+    }
+
+    #[test]
+    fn f1dn_xml_recognizes_move_and_delay() {
+        let xml = r#"<Root><DefaultMacro>
+<KeyDown><Syntax></Syntax></KeyDown>
+<KeyDown><Syntax>LeftDown 1
+Delay 10 ms
+MoveR 0 2
+LeftUp 1
+</Syntax></KeyDown>
+</DefaultMacro></Root>"#;
+        let m = parse_amc_text(xml, "t.amc").unwrap();
+        assert!(m.steps.iter().any(|s| matches!(s, MacroStep::MouseMoveRel { dx: 0, dy: 2 })));
+        assert!(m.steps.iter().any(|s| matches!(s, MacroStep::Delay { ms: 10 })));
     }
 
     #[test]

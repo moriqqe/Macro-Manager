@@ -26,8 +26,9 @@ pub fn execute_step(step: &MacroStep) -> Result<(), ExecError> {
 mod imp {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         MapVirtualKeyW, SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
-        MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK,
+        MOUSEINPUT,         MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+        MOUSEEVENTF_VIRTUALDESK,
         MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MAPVK_VK_TO_VSC, INPUT_KEYBOARD, INPUT_MOUSE,
         MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
@@ -51,6 +52,7 @@ mod imp {
             }
             MacroStep::KeyDown { vk } => send_key(*vk, false)?,
             MacroStep::KeyUp { vk } => send_key(*vk, true)?,
+            MacroStep::MouseMoveRel { dx, dy } => send_mouse_move_rel(*dx, *dy)?,
             MacroStep::Delay { .. } => {}
         }
         Ok(())
@@ -81,6 +83,21 @@ mod imp {
             dy: 0,
             mouseData: data,
             dwFlags: flags | MOUSEEVENTF_VIRTUALDESK,
+            time: 0,
+            dwExtraInfo: 0usize,
+        };
+        send_input(INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 { mi },
+        })
+    }
+
+    fn send_mouse_move_rel(dx: i32, dy: i32) -> Result<(), ExecError> {
+        let mi = MOUSEINPUT {
+            dx,
+            dy,
+            mouseData: 0,
+            dwFlags: MOUSEEVENTF_MOVE,
             time: 0,
             dwExtraInfo: 0usize,
         };

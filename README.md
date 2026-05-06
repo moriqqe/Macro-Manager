@@ -31,7 +31,7 @@ On first launch, a default `config.json` is created. The app may refresh weapon 
 
 - If `npm run build` fails on Linux or WSL with **`failed to run linuxdeploy`**, AppImage tooling often needs FUSE or `APPIMAGE_EXTRACT_AND_RUN=1`. This repo’s `bundle.targets` skips **AppImage** so **`deb` / `rpm`** (and Windows/macOS targets on those hosts) still build; add `appimage` back only if you need it and can run `linuxdeploy` successfully.
 - If the window shows broken images, run a fresh build and ensure you start the app via **Tauri** or the packaged binary (not a raw `file://` copy of `index.html` opened alone).
-- If the UI fails to load configuration, check the developer console (when running in dev mode) and that `config.json` is readable.
+- If **`npm run build`** fails with **`failed to remove ... target/release/app.exe` / Access denied**, close **MacrosManager** if it is running (Task Manager → end **app**). The build script tries to stop **`app.exe`** automatically; if it still fails, close other handles on that file (e.g. **preview tab** of `app.exe` in the IDE, antivirus scan).
 
 ## For developers
 
@@ -50,12 +50,11 @@ npm install
 
 ### `web-root` and the frontend
 
-`src-tauri/tauri.conf.json` sets `frontendDist` to **`../web-root`**. That directory contains symlinks to the real UI entry and assets:
+`src-tauri/tauri.conf.json` sets `frontendDist` to **`../web-root`** so Tauri embeds only the UI (not the whole repo). On **Windows**, Git often checks out Unix symlinks as tiny text files (e.g. containing `../index.html`), which breaks the packaged app — the window would show that path as plain text.
 
-- `web-root/index.html` → `../index.html`
-- `web-root/assets` → `../assets`
+**Fix:** `beforeDevCommand` / `beforeBuildCommand` run **`scripts/sync-web-root.cjs`**, which copies the real **`index.html`** and **`assets/`** from the repo root into `web-root/`. After cloning, run `npm install` then `npm run dev` or `npm run build`; you can also run `npm run sync-web-root` manually.
 
-This limits what Tauri embeds at compile time and keeps builds faster than pointing at the whole repo. If `web-root` is missing, recreate those links (see [Tauri `frontendDist`](https://v2.tauri.app/reference/config/#frontenddist)).
+On macOS/Linux you can still use symlinks in `web-root/` if you prefer; the sync script overwrites those copies when you build.
 
 ### Run in development
 
@@ -101,7 +100,7 @@ If `cargo` errors around `generate_context!` or missing `.rlib` after interrupte
 | `index.html` | Main UI, invokes Tauri commands |
 | `assets/` | Source images for weapons and game logos (read by **`build.rs`** at compile time) |
 | `src-tauri/build.rs` | Encodes those files as `data:` URLs into the Rust binary (weapon + tab icons) |
-| `web-root/` | Symlink bundle consumed as `frontendDist` |
+| `web-root/` | Copy of `index.html` + `assets/` for `frontendDist` (filled by `scripts/sync-web-root.cjs`) |
 | `src-tauri/` | Rust app: config, commands, macro engine, **Windows** input listener |
 
 ### License

@@ -1,12 +1,19 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "MacrosManager",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-0",
   "identifier": "com.macros.manager",
   "build": {
     "frontendDist": "../web-root",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeDevCommand": {
+      "script": "node scripts/sync-web-root.cjs",
+      "cwd": "..",
+      "wait": true
+    },
+    "beforeBuildCommand": {
+      "script": "node scripts/sync-web-root.cjs",
+      "cwd": ".."
+    }
   },
   "app": {
     "withGlobalTauri": true,
@@ -28,8 +35,7 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["deb", "rpm", "nsis", "msi", "dmg", "app"],
+    "active": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
